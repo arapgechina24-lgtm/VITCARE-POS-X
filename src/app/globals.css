@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --fir: #0b3d2e;
+  --leaf: #10b981;
+  --mint: #ecfdf5;
+  --paper: #fafdfb;
+  --ink: #0f172a;
+}
+
+html, body { height: 100%; }
+body {
+  @apply bg-paper text-ink font-body antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+.dark body { background: #07120e; color: #e7f3ee; }
+
+h1, h2, h3, .display { @apply font-display; }
+
+/* Touch-friendly targets across the POS */
+button, [role='button'] { min-height: 40px; }
+
+.card { @apply bg-white rounded-2xl shadow-card border border-mint-deep/60; }
+.dark .card { background: #0c1f18; border-color: #14352a; }
+
+.btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-semibold transition active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none; }
+.btn-primary { @apply btn bg-fir text-white hover:bg-fir-soft shadow-lift; }
+.btn-leaf { @apply btn bg-leaf text-white hover:bg-leaf-soft; }
+.btn-ghost { @apply btn bg-transparent text-fir hover:bg-mint; }
+.dark .btn-ghost { color: #9ff0cf; }
+.input { @apply w-full rounded-xl border border-mint-deep bg-white px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-leaf/50; }
+.dark .input { background: #0c1f18; border-color: #14352a; color: #e7f3ee; }
+
+.chip { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold; }
+
+/* Signature: the vitals line — a quiet ECG pulse used on splash + headers */
+.pulse-line { stroke-dasharray: 400; stroke-dashoffset: 400; animation: draw 2.4s ease forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* ── Receipt printing ─────────────────────────────────────────────────────
+   Browser print of the receipt modal only; includes an 80 mm thermal profile. */
+@media print {
+  body * { visibility: hidden; }
+  #print-receipt, #print-receipt * { visibility: visible; }
+  #print-receipt {
+    position: absolute; inset: 0 auto auto 0; width: 80mm; margin: 0; padding: 4mm;
+    background: white; color: black; box-shadow: none; border: none;
+    font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px;
+  }
+  @page { margin: 0; size: 80mm auto; }
+}
