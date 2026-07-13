@@ -30,15 +30,6 @@ export default function InsurancePage() {
   const providers = useLiveQuery(() => db.insuranceProviders.orderBy('name').toArray(), [], []);
   const claims = useLiveQuery(() => db.insuranceClaims.orderBy('createdAt').reverse().toArray(), [], []);
 
-  if (!canManage) {
-    return (
-      <div className="animate-rise">
-        <h1 className="text-2xl font-bold">Insurance claims</h1>
-        <p className="mt-3 text-sm text-ink/50">Only administrators and pharmacists can manage insurance payers and claims.</p>
-      </div>
-    );
-  }
-
   const visible = (claims ?? []).filter((c) =>
     (statusFilter === 'all' || c.status === statusFilter) &&
     (!q.trim() || [c.invoiceNo, c.patientName, c.memberNo, c.providerName].some((f) => f.toLowerCase().includes(q.toLowerCase()))));
@@ -56,6 +47,7 @@ export default function InsurancePage() {
   const totalReceivable = receivablesByProvider.reduce((a, r) => a + r.amount, 0);
 
   async function saveProvider(p: InsuranceProvider) {
+    if (!canManage) return;
     p.updatedAt = Date.now();
     await db.insuranceProviders.put(p);
     await db.syncQueue.add({ table: 'insuranceProviders', op: 'upsert', payload: p, createdAt: Date.now() });
@@ -64,6 +56,7 @@ export default function InsurancePage() {
   }
 
   async function delProvider(p: InsuranceProvider) {
+    if (!canManage) return;
     if (!confirm(`Delete payer ${p.name}? Existing claims keep their record but won't link to a live payer.`)) return;
     await db.insuranceProviders.delete(p.id);
     await db.syncQueue.add({ table: 'insuranceProviders', op: 'delete', payload: { id: p.id }, createdAt: Date.now() });
@@ -71,6 +64,7 @@ export default function InsurancePage() {
   }
 
   async function updateClaim(c: InsuranceClaim, patch: Partial<InsuranceClaim>, action: string) {
+    if (!canManage) return;
     const next = { ...c, ...patch, updatedAt: Date.now() };
     await db.insuranceClaims.put(next);
     await db.syncQueue.add({ table: 'insuranceClaims', op: 'upsert', payload: next, createdAt: Date.now() });
@@ -127,7 +121,9 @@ export default function InsurancePage() {
 
       <div className="flex items-center gap-3">
         <h2 className="text-lg font-bold mr-auto">Payers</h2>
-        <button className="btn-leaf text-sm" onClick={() => setEditing('new')}><Plus className="w-4 h-4" /> Add payer</button>
+        {canManage && (
+          <button className="btn-leaf text-sm" onClick={() => setEditing('new')}><Plus className="w-4 h-4" /> Add payer</button>
+        )}
       </div>
       <div className="card overflow-x-auto">
         <table className="w-full text-sm min-w-[700px]">
@@ -145,10 +141,12 @@ export default function InsurancePage() {
                 <td className="p-3 text-xs text-ink/60">{p.contactPerson}{p.phone ? ` · ${p.phone}` : ''}</td>
                 <td className="p-3 text-right font-mono">{p.defaultCoPayPercent}%</td>
                 <td className="p-3">
-                  <div className="flex justify-end gap-1">
-                    <button className="p-2 rounded-lg hover:bg-mint" title="Edit" onClick={() => setEditing(p)}><Pencil className="w-4 h-4 text-ink/60" /></button>
-                    <button className="p-2 rounded-lg hover:bg-red-50" title="Delete" onClick={() => void delProvider(p)}><Trash2 className="w-4 h-4 text-red-500" /></button>
-                  </div>
+                  {canManage && (
+                    <div className="flex justify-end gap-1">
+                      <button className="p-2 rounded-lg hover:bg-mint" title="Edit" onClick={() => setEditing(p)}><Pencil className="w-4 h-4 text-ink/60" /></button>
+                      <button className="p-2 rounded-lg hover:bg-red-50" title="Delete" onClick={() => void delProvider(p)}><Trash2 className="w-4 h-4 text-red-500" /></button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}
@@ -195,20 +193,22 @@ export default function InsurancePage() {
                   )}
                 </td>
                 <td className="p-3">
-                  <div className="flex justify-end gap-1">
-                    {c.status === 'pending' && (
-                      <button className="btn-ghost border border-mint-deep text-xs" onClick={() => submitClaim(c)}><Send className="w-3.5 h-3.5" /> Submit</button>
-                    )}
-                    {c.status === 'submitted' && (
-                      <>
-                        <button className="p-2 rounded-lg hover:bg-mint" title="Approve" onClick={() => approveClaim(c)}><CheckCircle2 className="w-4 h-4 text-leaf" /></button>
-                        <button className="p-2 rounded-lg hover:bg-red-50" title="Reject" onClick={() => rejectClaim(c)}><XCircle className="w-4 h-4 text-red-500" /></button>
-                      </>
-                    )}
-                    {c.status === 'approved' && (
-                      <button className="btn-ghost border border-mint-deep text-xs" onClick={() => markPaid(c)}><Banknote className="w-3.5 h-3.5" /> Mark paid</button>
-                    )}
-                  </div>
+                  {canManage && (
+                    <div className="flex justify-end gap-1">
+                      {c.status === 'pending' && (
+                        <button className="btn-ghost border border-mint-deep text-xs" onClick={() => submitClaim(c)}><Send className="w-3.5 h-3.5" /> Submit</button>
+                      )}
+                      {c.status === 'submitted' && (
+                        <>
+                          <button className="p-2 rounded-lg hover:bg-mint" title="Approve" onClick={() => approveClaim(c)}><CheckCircle2 className="w-4 h-4 text-leaf" /></button>
+                          <button className="p-2 rounded-lg hover:bg-red-50" title="Reject" onClick={() => rejectClaim(c)}><XCircle className="w-4 h-4 text-red-500" /></button>
+                        </>
+                      )}
+                      {c.status === 'approved' && (
+                        <button className="btn-ghost border border-mint-deep text-xs" onClick={() => markPaid(c)}><Banknote className="w-3.5 h-3.5" /> Mark paid</button>
+                      )}
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

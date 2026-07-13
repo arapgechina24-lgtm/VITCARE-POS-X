@@ -23,7 +23,7 @@ const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; sh
   { href: '/dashboard/sales', label: 'Sales & refunds', icon: Receipt, show: CAN.processRefunds },
   { href: '/dashboard/customers', label: 'Customers', icon: Users, show: CAN.manageDirectory },
   { href: '/dashboard/suppliers', label: 'Suppliers', icon: Truck, show: CAN.manageDirectory },
-  { href: '/dashboard/insurance', label: 'Insurance claims', icon: ShieldPlus, show: CAN.manageInsurance },
+  { href: '/dashboard/insurance', label: 'Insurance claims', icon: ShieldPlus },
   { href: '/dashboard/reports', label: 'Reports', icon: BarChart3, show: CAN.viewReports },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings, show: CAN.manageSettings },
 ];
