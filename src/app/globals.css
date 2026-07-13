@@ -3,10 +3,10 @@
 @tailwind utilities;
 
 :root {
-  --fir: #0b3d2e;
-  --leaf: #10b981;
-  --mint: #ecfdf5;
-  --paper: #fafdfb;
+  --fir: #0369a1;
+  --leaf: #0ea5e9;
+  --mint: #f0f9ff;
+  --paper: #f8fbff;
   --ink: #0f172a;
 }
 
@@ -15,7 +15,7 @@ body {
   @apply bg-paper text-ink font-body antialiased;
   -webkit-tap-highlight-color: transparent;
 }
-.dark body { background: #07120e; color: #e7f3ee; }
+.dark body { background: #071726; color: #e5f3fc; }
 
 h1, h2, h3, .display { @apply font-display; }
 
@@ -23,15 +23,15 @@ h1, h2, h3, .display { @apply font-display; }
 button, [role='button'] { min-height: 40px; }
 
 .card { @apply bg-white rounded-2xl shadow-card border border-mint-deep/60; }
-.dark .card { background: #0c1f18; border-color: #14352a; }
+.dark .card { background: #0c2233; border-color: #143247; }
 
 .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-semibold transition active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none; }
 .btn-primary { @apply btn bg-fir text-white hover:bg-fir-soft shadow-lift; }
 .btn-leaf { @apply btn bg-leaf text-white hover:bg-leaf-soft; }
 .btn-ghost { @apply btn bg-transparent text-fir hover:bg-mint; }
-.dark .btn-ghost { color: #9ff0cf; }
+.dark .btn-ghost { color: #9fddf7; }
 .input { @apply w-full rounded-xl border border-mint-deep bg-white px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-leaf/50; }
-.dark .input { background: #0c1f18; border-color: #14352a; color: #e7f3ee; }
+.dark .input { background: #0c2233; border-color: #143247; color: #e5f3fc; }
 
 .chip { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold; }
 

@@ -3,14 +3,14 @@ import Script from 'next/script';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Vitcare POS — Vitcare Healthcare Limited',
-  description: 'Your Trusted Pharmacy Partner in Nairobi. Offline-first pharmacy point of sale.',
+  title: 'Vitcare POS — Vitcare Pharmacy and Medical Centre',
+  description: 'Your Trusted Pharmacy Partner in Naivasha. Offline-first pharmacy point of sale.',
   manifest: '/manifest.json',
   appleWebApp: { capable: true, title: 'Vitcare POS', statusBarStyle: 'black-translucent' },
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0B3D2E',
+  themeColor: '#0C4A6E',
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',

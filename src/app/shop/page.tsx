@@ -9,7 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { cartTotals, KES } from '@/lib/utils';
 import type { CartLine, Drug, OnlineOrder } from '@/lib/types';
 
-const NAME = process.env.NEXT_PUBLIC_COMPANY_NAME || 'Vitcare Healthcare Limited';
+const NAME = process.env.NEXT_PUBLIC_COMPANY_NAME || 'Vitcare Pharmacy and Medical Centre';
 
 /**
  * Customer shop. Browsing reads the local catalog (demo) or Supabase
@@ -70,7 +70,7 @@ export default function Shop() {
           <div className="w-9 h-9 rounded-xl bg-leaf grid place-items-center"><Cross className="w-5 h-5 text-fir-deep" /></div>
           <div className="mr-auto">
             <p className="font-display font-bold leading-tight">{NAME}</p>
-            <p className="text-[10px] text-mint/60 -mt-0.5">Order online · collect or get it delivered in Nairobi</p>
+            <p className="text-[10px] text-mint/60 -mt-0.5">Order online · collect or get it delivered in Naivasha</p>
           </div>
           <Link href="/" className="text-xs text-mint/60 hover:text-mint hidden sm:block">Staff area</Link>
           <button className="relative btn bg-leaf text-fir-deep px-3 py-2" onClick={() => setCheckout(true)} aria-label="Open basket">

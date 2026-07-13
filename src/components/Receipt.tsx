@@ -1,9 +1,9 @@
 'use client';
 import QRCode from 'react-qr-code';
 import type { Sale } from '@/lib/types';
-import { KES, lineTotals } from '@/lib/utils';
+import { KES, lineTotals, taxCategory } from '@/lib/utils';
 
-const NAME = process.env.NEXT_PUBLIC_COMPANY_NAME || 'Vitcare Healthcare Limited';
+const NAME = process.env.NEXT_PUBLIC_COMPANY_NAME || 'Vitcare Pharmacy and Medical Centre';
 const PIN = process.env.NEXT_PUBLIC_KRA_PIN || 'P051234567X';
 
 /**
@@ -17,7 +17,7 @@ export default function Receipt({ sale }: { sale: Sale }) {
     <div id="print-receipt" className="bg-white text-black font-mono text-[11px] leading-relaxed p-4 rounded-xl border border-mint-deep max-w-xs mx-auto">
       <div className="text-center">
         <p className="font-bold text-sm">{NAME}</p>
-        <p>Moi Avenue, Nairobi · Tel 0700 000 000</p>
+        <p>Next to Modern Market, Naivasha · Tel 0700 000 000</p>
         <p>KRA PIN: {PIN}</p>
         <p className="mt-1 font-bold">TAX INVOICE</p>
       </div>
@@ -47,7 +47,7 @@ export default function Receipt({ sale }: { sale: Sale }) {
                 <td className="py-0.5 pr-1">
                   {l.name} {l.strength}
                   <br />
-                  <span className="text-[10px]">{l.qty} × {l.unitPrice.toFixed(2)} @ {(l.taxRate * 100).toFixed(0)}%</span>
+                  <span className="text-[10px]">{l.qty} × {l.unitPrice.toFixed(2)} @ {(l.taxRate * 100).toFixed(0)}% (Cat {taxCategory(l.taxRate)})</span>
                 </td>
                 <td className="text-right">{t.excl.toFixed(2)}</td>
                 <td className="text-right">{t.tax.toFixed(2)}</td>
@@ -66,6 +66,15 @@ export default function Receipt({ sale }: { sale: Sale }) {
 
       {sale.etims && (
         <div className="mt-2 border-t border-dashed border-black/40 pt-2">
+          {sale.etims.taxBreakdown && sale.etims.taxBreakdown.length > 0 && (
+            <div className="mb-1.5">
+              {sale.etims.taxBreakdown.map((b) => (
+                <p key={b.code} className="flex justify-between text-[10px]">
+                  <span>{b.label}: taxable {b.taxableAmount.toFixed(2)}</span><span>tax {b.taxAmount.toFixed(2)}</span>
+                </p>
+              ))}
+            </div>
+          )}
           <p>SCU ID: {sale.etims.scuId}</p>
           <p className="break-all">Receipt Sign: {sale.etims.receiptSignature}</p>
           <div className="mt-2 flex justify-center bg-white p-1">
@@ -76,7 +85,7 @@ export default function Receipt({ sale }: { sale: Sale }) {
       )}
 
       <p className="mt-3 text-center">Asante — get well soon!</p>
-      <p className="text-center text-[10px]">Goods once sold (medicines) are not returnable.</p>
+      <p className="text-center text-[10px]">Refunds &amp; exchanges are at pharmacist/admin discretion — bring this receipt.</p>
     </div>
   );
 }

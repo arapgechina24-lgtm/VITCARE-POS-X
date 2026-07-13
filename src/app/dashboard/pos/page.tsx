@@ -4,13 +4,13 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Search, Plus, Minus, Trash2, PauseCircle, PlayCircle, Banknote,
-  Smartphone, Printer, CheckCircle2, Loader2, XCircle, ScanBarcode,
+  Smartphone, Printer, CheckCircle2, Loader2, XCircle, ScanBarcode, Tag, X,
 } from 'lucide-react';
 import { db, logAudit, nextInvoiceNo, uid } from '@/lib/db';
 import { usePos } from '@/lib/store';
 import { cartTotals, demoEtimsStamp, KES, lineTotals } from '@/lib/utils';
 import { sounds } from '@/lib/sounds';
-import type { PaymentMethod, Sale } from '@/lib/types';
+import type { Discount, PaymentMethod, Sale } from '@/lib/types';
 import Receipt from '@/components/Receipt';
 
 type PayState =
@@ -22,13 +22,16 @@ type PayState =
   | { step: 'failed'; reason: string };
 
 export default function PosPage() {
-  const { lines, addDrug, setQty, remove, clear, hold, recall, held } = usePos();
+  const { lines, addDrug, setQty, remove, clear, hold, recall, held, discount, setDiscount } = usePos();
   const [q, setQ] = useState('');
   const [pay, setPay] = useState<PayState>({ step: 'idle' });
   const [cashGiven, setCashGiven] = useState('');
   const [phone, setPhone] = useState('');
   const [custName, setCustName] = useState('');
   const [custPin, setCustPin] = useState('');
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountType, setDiscountType] = useState<Discount['type']>('percent');
+  const [discountValue, setDiscountValue] = useState('');
 
   const drugs = useLiveQuery(async () => {
     const all = await db.drugs.toArray();
@@ -39,16 +42,26 @@ export default function PosPage() {
     ).slice(0, 24);
   }, [q], []);
 
-  const totals = useMemo(() => cartTotals(lines), [lines]);
+  const totals = useMemo(() => cartTotals(lines, discount), [lines, discount]);
   const change = Number(cashGiven || 0) - totals.total;
 
   async function completeSale(method: PaymentMethod, mpesaRef?: string) {
     const invoiceNo = await nextInvoiceNo();
+    let etims = demoEtimsStamp(invoiceNo, lines); // offline-safe default
+    try {
+      const res = await fetch('/api/etims/invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceNo, lines, customerPin: custPin || undefined }),
+      });
+      if (res.ok) etims = await res.json();
+    } catch { /* offline — keep the local simulated stamp */ }
     const sale: Sale = {
       id: uid(),
       invoiceNo,
       lines,
       ...totals,
+      discount: discount ?? undefined,
       method,
       status: 'paid',
       customerName: custName || undefined,
@@ -57,7 +70,7 @@ export default function PosPage() {
       mpesaRef,
       createdAt: Date.now(),
       synced: 0,
-      etims: demoEtimsStamp(invoiceNo),
+      etims,
     };
     await db.transaction('rw', db.sales, db.drugs, db.syncQueue, async () => {
       await db.sales.add(sale);
@@ -69,7 +82,7 @@ export default function PosPage() {
     });
     await logAudit('cashier', 'sale', `${invoiceNo} · ${KES(sale.total)} · ${method}`);
     clear();
-    setCashGiven(''); setPhone(''); setCustName(''); setCustPin('');
+    setCashGiven(''); setPhone(''); setCustName(''); setCustPin(''); setDiscountOpen(false); setDiscountValue('');
     sounds.success();
     setPay({ step: 'done', sale });
   }
@@ -209,9 +222,39 @@ export default function PosPage() {
           <input className="input text-sm" placeholder="Buyer KRA PIN (opt.)" value={custPin} onChange={(e) => setCustPin(e.target.value.toUpperCase())} />
         </div>
 
+        <div className="mt-2">
+          {discount ? (
+            <button className="chip bg-amber-100 text-amber-700 border border-amber-200" onClick={() => setDiscount(null)}>
+              <Tag className="w-3.5 h-3.5" /> {discount.type === 'percent' ? `${discount.value}% off` : `${KES(discount.value)} off`} <X className="w-3 h-3" />
+            </button>
+          ) : discountOpen ? (
+            <div className="flex items-center gap-1.5">
+              <select className="input text-sm w-24" value={discountType} onChange={(e) => setDiscountType(e.target.value as Discount['type'])}>
+                <option value="percent">%</option>
+                <option value="amount">KSh</option>
+              </select>
+              <input className="input text-sm" inputMode="decimal" placeholder="Value" autoFocus
+                value={discountValue} onChange={(e) => setDiscountValue(e.target.value.replace(/[^\d.]/g, ''))} />
+              <button className="btn-ghost border border-mint-deep px-3 text-sm" onClick={() => {
+                const v = Number(discountValue);
+                if (v > 0) setDiscount({ type: discountType, value: v });
+                setDiscountOpen(false); setDiscountValue('');
+              }}>Apply</button>
+            </div>
+          ) : (
+            <button className="text-xs text-ink/50 hover:text-fir flex items-center gap-1" disabled={!lines.length}
+              onClick={() => setDiscountOpen(true)}>
+              <Tag className="w-3.5 h-3.5" /> Add discount
+            </button>
+          )}
+        </div>
+
         <div className="mt-3 border-t border-dashed border-mint-deep pt-3 space-y-1 text-sm">
           <p className="flex justify-between text-ink/60"><span>Subtotal (excl. VAT)</span><span className="font-mono">{KES(totals.subtotal)}</span></p>
           <p className="flex justify-between text-ink/60"><span>VAT</span><span className="font-mono">{KES(totals.taxTotal)}</span></p>
+          {totals.discountAmount > 0 && (
+            <p className="flex justify-between text-amber-600"><span>Discount</span><span className="font-mono">-{KES(totals.discountAmount)}</span></p>
+          )}
           <p className="flex justify-between text-lg font-bold"><span>Total</span><span className="font-mono">{KES(totals.total)}</span></p>
         </div>
 
@@ -232,7 +275,7 @@ export default function PosPage() {
             className="fixed inset-0 z-50 bg-black/50 grid place-items-center p-4 print:bg-white"
             onClick={() => pay.step !== 'mpesa-wait' && setPay({ step: 'idle' })}>
             <motion.div initial={{ scale: 0.94, y: 10 }} animate={{ scale: 1, y: 0 }}
-              className="bg-white dark:bg-[#0c1f18] rounded-2xl p-6 w-full max-w-md shadow-lift print:shadow-none"
+              className="bg-white dark:bg-[#0c2233] rounded-2xl p-6 w-full max-w-md shadow-lift print:shadow-none"
               onClick={(e) => e.stopPropagation()}>
 
               {pay.step === 'cash' && (

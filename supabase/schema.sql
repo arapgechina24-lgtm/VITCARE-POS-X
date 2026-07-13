@@ -2,17 +2,33 @@
 -- Run in the Supabase SQL editor (Dashboard → SQL). Then enable Realtime on `orders`.
 
 -- ── Roles ─────────────────────────────────────────────────────────────────
--- Staff roles live in profiles; RLS below enforces admin/pharmacist/viewer.
+-- Staff roles live in profiles; RLS below enforces admin/pharmacist/cashier.
+-- New signups default to 'cashier' (least privilege); promote via SQL:
+--   update profiles set role = 'admin' where id = '<user-uuid>';
 create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
-  role text not null default 'viewer' check (role in ('admin','pharmacist','viewer')),
+  role text not null default 'cashier' check (role in ('admin','pharmacist','cashier')),
   created_at timestamptz default now()
 );
 
 create or replace function public.role_of(uid uuid) returns text
 language sql stable security definer set search_path = public as
 $$ select role from profiles where id = uid $$;
+
+-- Auto-provision a profile (default role: cashier) whenever someone signs up.
+create or replace function public.handle_new_user() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.profiles (id, full_name) values (new.id, new.raw_user_meta_data->>'full_name');
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
 
 -- ── Core tables (columns mirror the client's camelCase via snake_case) ────
 create table if not exists drugs (
@@ -27,10 +43,12 @@ create table if not exists drugs (
   stock int default 0,
   reorder_level int default 0,
   unit_price numeric default 0,
+  cost_price numeric default 0,
   tax_rate numeric default 0,
   category text default '',
   barcode text default '',
   notes text,
+  supplier_id text,
   updated_at bigint default 0
 );
 
@@ -41,8 +59,11 @@ create table if not exists sales (
   subtotal numeric not null,
   tax_total numeric not null,
   total numeric not null,
+  discount jsonb,
+  discount_amount numeric default 0,
   method text not null,
-  status text not null default 'paid',
+  status text not null default 'paid' check (status in ('pending','paid','failed','refunded','partially_refunded')),
+  customer_id text,
   customer_name text,
   customer_phone text,
   customer_pin text,
@@ -50,7 +71,8 @@ create table if not exists sales (
   cashier_id text,
   created_at bigint not null,
   synced int default 1,
-  etims jsonb
+  etims jsonb,
+  refunds jsonb default '[]'::jsonb
 );
 
 create table if not exists orders (
@@ -82,6 +104,42 @@ create table if not exists payments (
   updated_at timestamptz default now()
 );
 
+create table if not exists customers (
+  id text primary key,
+  name text not null,
+  phone text not null,
+  email text,
+  kra_pin text,
+  notes text,
+  loyalty_points int default 0,
+  created_at bigint not null,
+  updated_at bigint not null
+);
+
+create table if not exists suppliers (
+  id text primary key,
+  name text not null,
+  contact_person text,
+  phone text not null,
+  email text,
+  address text,
+  outstanding_balance numeric default 0,
+  rating int check (rating between 1 and 5),
+  created_at bigint not null,
+  updated_at bigint not null
+);
+
+create table if not exists purchase_orders (
+  id text primary key,
+  supplier_id text references suppliers(id) on delete set null,
+  supplier_name text not null,
+  lines jsonb not null,
+  total numeric not null,
+  status text not null default 'pending' check (status in ('pending','received','cancelled')),
+  created_at bigint not null,
+  received_at bigint
+);
+
 -- ── Row Level Security ────────────────────────────────────────────────────
 alter table profiles enable row level security;
 alter table drugs enable row level security;
@@ -89,6 +147,9 @@ alter table sales enable row level security;
 alter table orders enable row level security;
 alter table audit enable row level security;
 alter table payments enable row level security;   -- no anon policies: service-role only
+alter table customers enable row level security;
+alter table suppliers enable row level security;
+alter table purchase_orders enable row level security;
 
 create policy "read own profile" on profiles for select using (auth.uid() = id);
 
@@ -99,11 +160,31 @@ create policy "staff write drugs" on drugs for all
   with check (role_of(auth.uid()) in ('admin','pharmacist'));
 
 create policy "staff read sales"  on sales for select using (auth.role() = 'authenticated');
-create policy "staff write sales" on sales for insert
+-- Every staff role (cashiers included) records sales — that's the point of the role.
+create policy "staff write sales" on sales for insert with check (auth.role() = 'authenticated');
+-- Refunds/voids (status update on an existing sale) are a higher-trust action.
+create policy "staff refund sales" on sales for update
+  using (role_of(auth.uid()) in ('admin','pharmacist'));
+
+create policy "staff read audit"  on audit for select using (role_of(auth.uid()) in ('admin','pharmacist'));
+create policy "staff write audit" on audit for insert with check (auth.role() = 'authenticated');
+
+-- Customers, suppliers & purchase orders: all staff can read (e.g. cashier looking
+-- up a customer at checkout); writes require admin/pharmacist.
+create policy "staff read customers"  on customers for select using (auth.role() = 'authenticated');
+create policy "staff write customers" on customers for all
+  using (role_of(auth.uid()) in ('admin','pharmacist'))
   with check (role_of(auth.uid()) in ('admin','pharmacist'));
 
-create policy "staff read audit"  on audit for select using (role_of(auth.uid()) = 'admin');
-create policy "staff write audit" on audit for insert with check (auth.role() = 'authenticated');
+create policy "staff read suppliers"  on suppliers for select using (auth.role() = 'authenticated');
+create policy "staff write suppliers" on suppliers for all
+  using (role_of(auth.uid()) in ('admin','pharmacist'))
+  with check (role_of(auth.uid()) in ('admin','pharmacist'));
+
+create policy "staff read po"  on purchase_orders for select using (auth.role() = 'authenticated');
+create policy "staff write po" on purchase_orders for all
+  using (role_of(auth.uid()) in ('admin','pharmacist'))
+  with check (role_of(auth.uid()) in ('admin','pharmacist'));
 
 -- Customers (anon) may create orders from the shop; only staff read/manage them
 create policy "public create order" on orders for insert with check (true);

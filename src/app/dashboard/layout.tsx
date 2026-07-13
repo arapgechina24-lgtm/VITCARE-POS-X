@@ -4,21 +4,27 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Cross, LayoutDashboard, ShoppingCart, Pill, Inbox, BarChart3, Settings,
-  Wifi, WifiOff, LogOut, Menu, X,
+  Wifi, WifiOff, LogOut, Menu, X, Receipt,
 } from 'lucide-react';
 import { db, getSettings, seedIfEmpty } from '@/lib/db';
 import { isDemoMode, startSync, supabase } from '@/lib/supabase';
 import { setSoundEnabled, sounds } from '@/lib/sounds';
 import Assistant from '@/components/Assistant';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { CAN, getRole, ROLE_LABEL, RoleContext } from '@/lib/role';
+import type { Role } from '@/lib/types';
+import { Users, Truck } from 'lucide-react';
 
-const NAV = [
+const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; show?: (r: Role) => boolean }> = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
   { href: '/dashboard/pos', label: 'Sell', icon: ShoppingCart },
   { href: '/dashboard/inventory', label: 'Inventory', icon: Pill },
   { href: '/dashboard/orders', label: 'Online orders', icon: Inbox },
-  { href: '/dashboard/reports', label: 'Reports', icon: BarChart3 },
-  { href: '/dashboard/settings', label: 'Settings', icon: Settings },
+  { href: '/dashboard/sales', label: 'Sales & refunds', icon: Receipt, show: CAN.processRefunds },
+  { href: '/dashboard/customers', label: 'Customers', icon: Users, show: CAN.manageDirectory },
+  { href: '/dashboard/suppliers', label: 'Suppliers', icon: Truck, show: CAN.manageDirectory },
+  { href: '/dashboard/reports', label: 'Reports', icon: BarChart3, show: CAN.viewReports },
+  { href: '/dashboard/settings', label: 'Settings', icon: Settings, show: CAN.manageSettings },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -26,10 +32,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const [online, setOnline] = useState(true);
   const [open, setOpen] = useState(false);
+  const [role, setRole] = useState<Role>('cashier');
   const newOrders = useLiveQuery(() => db.orders.where('status').equals('new').count(), [], 0);
 
   useEffect(() => {
     void seedIfEmpty();
+    void getRole().then(setRole);
     void getSettings().then((s) => {
       setSoundEnabled(s.soundOn);
       document.documentElement.classList.toggle('dark', s.darkMode);
@@ -50,7 +58,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const nav = (
     <nav className="flex flex-col gap-1 px-3">
-      {NAV.map(({ href, label, icon: Icon }) => {
+      {NAV.filter((n) => !n.show || n.show(role)).map(({ href, label, icon: Icon }) => {
         const active = path === href;
         return (
           <Link key={href} href={href} onClick={() => setOpen(false)}
@@ -68,7 +76,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   );
 
   return (
-    <div className="min-h-dvh flex bg-paper dark:bg-[#07120e]">
+    <div className="min-h-dvh flex bg-paper dark:bg-[#071726]">
       {/* Sidebar */}
       <aside className={`fixed lg:static z-40 inset-y-0 left-0 w-64 bg-fir-deep text-white flex-col
         transition-transform lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'} flex`}>
@@ -78,7 +86,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
           <div>
             <p className="font-display font-bold leading-tight">Vitcare POS</p>
-            <p className="text-[10px] text-mint/50 -mt-0.5">Healthcare Limited</p>
+            <p className="text-[10px] text-mint/50 -mt-0.5">{ROLE_LABEL[role]}</p>
           </div>
           <button className="ml-auto lg:hidden p-1" onClick={() => setOpen(false)} aria-label="Close menu">
             <X className="w-5 h-5" />
@@ -106,7 +114,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {online ? <Wifi className="w-5 h-5" /> : <WifiOff className="w-5 h-5" />}
           </span>
         </header>
-        <main className="flex-1 p-4 md:p-6 lg:p-8">{children}</main>
+        <main className="flex-1 p-4 md:p-6 lg:p-8">
+          <RoleContext.Provider value={role}>{children}</RoleContext.Provider>
+        </main>
       </div>
 
       <Assistant />

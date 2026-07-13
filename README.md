@@ -1,6 +1,6 @@
 # Vitcare POS
 
-**Vitcare Healthcare Limited — Your Trusted Pharmacy Partner in Nairobi.**
+**Vitcare Pharmacy and Medical Centre — Your Trusted Pharmacy Partner in Naivasha (next to the Modern Market).**
 
 An offline-first, installable (PWA) pharmacy point of sale with M-Pesa STK Push, KRA eTIMS-format tax invoices, live online-order intake, an AI store assistant, and a security posture designed for a licensed pharmacy.
 

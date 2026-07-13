@@ -5,6 +5,8 @@ import { motion } from 'framer-motion';
 import { Cross, KeyRound, ShieldCheck } from 'lucide-react';
 import { isDemoMode, supabase } from '@/lib/supabase';
 import { logAudit } from '@/lib/db';
+import { ROLE_LABEL, setDemoRole } from '@/lib/role';
+import type { Role } from '@/lib/types';
 
 /**
  * Authentication flow:
@@ -18,6 +20,7 @@ export default function Login() {
   const r = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState<Role>('cashier');
   const [code, setCode] = useState('');
   const [stage, setStage] = useState<'creds' | 'mfa'>('creds');
   const [factorId, setFactorId] = useState('');
@@ -29,7 +32,8 @@ export default function Login() {
     setErr('');
     if (isDemoMode || !supabase) {
       sessionStorage.setItem('vitcare-demo-user', email || 'demo@vitcare.co.ke');
-      await logAudit(email || 'demo', 'login', 'Demo-mode sign-in');
+      setDemoRole(role);
+      await logAudit(email || 'demo', 'login', `Demo-mode sign-in as ${role}`);
       r.push('/dashboard');
       return;
     }
@@ -75,6 +79,13 @@ export default function Login() {
               onChange={(e) => setEmail(e.target.value)} autoComplete="username" required={!isDemoMode} />
             <input className="input" type="password" placeholder="Password" value={password}
               onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required={!isDemoMode} />
+            {isDemoMode && (
+              <label className="block text-xs text-ink/50">Sign in as
+                <select className="input mt-1" value={role} onChange={(e) => setRole(e.target.value as Role)}>
+                  {(Object.keys(ROLE_LABEL) as Role[]).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                </select>
+              </label>
+            )}
             {err && <p className="text-sm text-red-600">{err}</p>}
             <button className="btn-primary w-full" disabled={busy}>
               <KeyRound className="w-4 h-4" /> {busy ? 'Signing in…' : 'Sign in'}

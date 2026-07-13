@@ -6,15 +6,18 @@ import { Plus, Search, Pencil, Trash2, PackagePlus, Download, Upload, X } from '
 import { db, logAudit, uid } from '@/lib/db';
 import { daysUntil, downloadCSV, KES } from '@/lib/utils';
 import { sounds } from '@/lib/sounds';
+import { CAN, useRole } from '@/lib/role';
 import type { Drug } from '@/lib/types';
 
 const EMPTY: Omit<Drug, 'id' | 'updatedAt'> = {
   name: '', genericName: '', strength: '', dosageForm: 'Tablet', manufacturer: '',
-  batchNumber: '', expiryDate: '', stock: 0, reorderLevel: 10, unitPrice: 0,
+  batchNumber: '', expiryDate: '', stock: 0, reorderLevel: 10, unitPrice: 0, costPrice: 0,
   taxRate: 0, category: 'General', barcode: '', notes: '',
 };
 
 export default function InventoryPage() {
+  const role = useRole();
+  const canWrite = CAN.manageInventory(role);
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<'all' | 'low' | 'expiring'>('all');
   const [editing, setEditing] = useState<Drug | 'new' | null>(null);
@@ -31,6 +34,7 @@ export default function InventoryPage() {
   }, [q, filter], []);
 
   async function save(d: Drug) {
+    if (!canWrite) return;
     d.updatedAt = Date.now();
     await db.drugs.put(d);
     await db.syncQueue.add({ table: 'drugs', op: 'upsert', payload: d, createdAt: Date.now() });
@@ -40,6 +44,7 @@ export default function InventoryPage() {
   }
 
   async function del(d: Drug) {
+    if (!canWrite) return;
     if (!confirm(`Delete ${d.name}? This cannot be undone.`)) return;
     await db.drugs.delete(d.id);
     await db.syncQueue.add({ table: 'drugs', op: 'delete', payload: { id: d.id }, createdAt: Date.now() });
@@ -50,12 +55,13 @@ export default function InventoryPage() {
     downloadCSV('vitcare-inventory.csv', (drugs ?? []).map((d) => ({
       name: d.name, generic: d.genericName, strength: d.strength, form: d.dosageForm,
       manufacturer: d.manufacturer, batch: d.batchNumber, expiry: d.expiryDate,
-      stock: d.stock, reorder: d.reorderLevel, price_excl: d.unitPrice, tax_rate: d.taxRate,
+      stock: d.stock, reorder: d.reorderLevel, price_excl: d.unitPrice, cost_price: d.costPrice, tax_rate: d.taxRate,
       category: d.category, barcode: d.barcode,
     })));
   }
 
   async function importCsv(file: File) {
+    if (!canWrite) return;
     const text = await file.text();
     const [head, ...rows] = text.split(/\r?\n/).filter(Boolean);
     const cols = head.split(',').map((c) => c.trim().toLowerCase().replace(/"/g, ''));
@@ -71,7 +77,7 @@ export default function InventoryPage() {
         dosageForm: get('form') || 'Tablet', manufacturer: get('manufacturer'),
         batchNumber: get('batch'), expiryDate: get('expiry'),
         stock: Number(get('stock')) || 0, reorderLevel: Number(get('reorder')) || 10,
-        unitPrice: Number(get('price_excl')) || 0, taxRate: Number(get('tax_rate')) || 0,
+        unitPrice: Number(get('price_excl')) || 0, costPrice: Number(get('cost_price')) || 0, taxRate: Number(get('tax_rate')) || 0,
         category: get('category') || 'General', barcode: get('barcode'),
       });
       added += 1;
@@ -85,10 +91,14 @@ export default function InventoryPage() {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-bold mr-auto">Inventory</h1>
         <button className="btn-ghost border border-mint-deep text-sm" onClick={exportCsv}><Download className="w-4 h-4" /> Export CSV</button>
-        <button className="btn-ghost border border-mint-deep text-sm" onClick={() => fileRef.current?.click()}><Upload className="w-4 h-4" /> Import CSV</button>
-        <input ref={fileRef} type="file" accept=".csv" className="hidden"
-          onChange={(e) => e.target.files?.[0] && void importCsv(e.target.files[0])} />
-        <button className="btn-leaf text-sm" onClick={() => setEditing('new')}><Plus className="w-4 h-4" /> Add product</button>
+        {canWrite && (
+          <>
+            <button className="btn-ghost border border-mint-deep text-sm" onClick={() => fileRef.current?.click()}><Upload className="w-4 h-4" /> Import CSV</button>
+            <input ref={fileRef} type="file" accept=".csv" className="hidden"
+              onChange={(e) => e.target.files?.[0] && void importCsv(e.target.files[0])} />
+            <button className="btn-leaf text-sm" onClick={() => setEditing('new')}><Plus className="w-4 h-4" /> Add product</button>
+          </>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2 items-center">
@@ -133,11 +143,13 @@ export default function InventoryPage() {
                   <td className="p-3 text-right font-mono">{KES(d.unitPrice)}</td>
                   <td className="p-3 text-right font-mono">{(d.taxRate * 100).toFixed(0)}%</td>
                   <td className="p-3">
-                    <div className="flex justify-end gap-1">
-                      <button className="p-2 rounded-lg hover:bg-mint" title="Receive stock" onClick={() => setRestock(d)}><PackagePlus className="w-4 h-4 text-fir" /></button>
-                      <button className="p-2 rounded-lg hover:bg-mint" title="Edit" onClick={() => setEditing(d)}><Pencil className="w-4 h-4 text-ink/60" /></button>
-                      <button className="p-2 rounded-lg hover:bg-red-50" title="Delete" onClick={() => void del(d)}><Trash2 className="w-4 h-4 text-red-500" /></button>
-                    </div>
+                    {canWrite ? (
+                      <div className="flex justify-end gap-1">
+                        <button className="p-2 rounded-lg hover:bg-mint" title="Receive stock" onClick={() => setRestock(d)}><PackagePlus className="w-4 h-4 text-fir" /></button>
+                        <button className="p-2 rounded-lg hover:bg-mint" title="Edit" onClick={() => setEditing(d)}><Pencil className="w-4 h-4 text-ink/60" /></button>
+                        <button className="p-2 rounded-lg hover:bg-red-50" title="Delete" onClick={() => void del(d)}><Trash2 className="w-4 h-4 text-red-500" /></button>
+                      </div>
+                    ) : null}
                   </td>
                 </tr>
               );
@@ -178,6 +190,9 @@ function DrugModal({ initial, onClose, onSave }: { initial: Drug | null; onClose
         </label>
         <label className="text-xs text-ink/50">Unit price, KES excl. VAT
           <input className="input mt-1 font-mono" inputMode="decimal" value={f.unitPrice} onChange={(e) => set('unitPrice', num(e.target.value))} />
+        </label>
+        <label className="text-xs text-ink/50">Cost price, KES excl. VAT
+          <input className="input mt-1 font-mono" inputMode="decimal" value={f.costPrice} onChange={(e) => set('costPrice', num(e.target.value))} />
         </label>
         <label className="text-xs text-ink/50">Opening stock
           <input className="input mt-1 font-mono" inputMode="numeric" value={f.stock} onChange={(e) => set('stock', num(e.target.value))} />
@@ -238,7 +253,7 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 bg-black/50 grid place-items-center p-4" onClick={onClose}>
       <motion.div initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }}
-        className="bg-white dark:bg-[#0c1f18] rounded-2xl p-6 w-full max-w-lg shadow-lift max-h-[90vh] overflow-y-auto"
+        className="bg-white dark:bg-[#0c2233] rounded-2xl p-6 w-full max-w-lg shadow-lift max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-lg">{title}</h3>

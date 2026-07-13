@@ -4,9 +4,11 @@ import { Volume2, VolumeX, Moon, Sun, ShieldCheck, DatabaseZap, QrCode } from 'l
 import { db, getSettings, seedIfEmpty } from '@/lib/db';
 import { setSoundEnabled, sounds } from '@/lib/sounds';
 import { isDemoMode, supabase } from '@/lib/supabase';
+import { CAN, useRole } from '@/lib/role';
 import type { AppSettings } from '@/lib/types';
 
 export default function SettingsPage() {
+  const role = useRole();
   const [s, setS] = useState<AppSettings | null>(null);
   const [mfaQr, setMfaQr] = useState<string | null>(null);
   const [mfaMsg, setMfaMsg] = useState('');
@@ -40,6 +42,15 @@ export default function SettingsPage() {
   }
 
   if (!s) return null;
+
+  if (!CAN.manageSettings(role)) {
+    return (
+      <div className="max-w-2xl animate-rise">
+        <h1 className="text-2xl font-bold">Settings</h1>
+        <p className="mt-3 text-sm text-ink/50">Only administrators can view and change company settings.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl space-y-6 animate-rise">

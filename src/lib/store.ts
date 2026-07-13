@@ -1,6 +1,6 @@
 'use client';
 import { create } from 'zustand';
-import type { CartLine, Drug, Sale } from './types';
+import type { CartLine, Discount, Drug, Sale } from './types';
 
 interface HeldSale { id: string; lines: CartLine[]; note: string; at: number }
 
@@ -8,6 +8,7 @@ interface PosState {
   lines: CartLine[];
   held: HeldSale[];
   lastSale: Sale | null;
+  discount: Discount | null;
   addDrug: (d: Drug) => void;
   setQty: (drugId: string, qty: number) => void;
   remove: (drugId: string) => void;
@@ -15,12 +16,14 @@ interface PosState {
   hold: (note: string) => void;
   recall: (id: string) => void;
   setLastSale: (s: Sale | null) => void;
+  setDiscount: (d: Discount | null) => void;
 }
 
 export const usePos = create<PosState>((set, get) => ({
   lines: [],
   held: [],
   lastSale: null,
+  discount: null,
   addDrug: (d) =>
     set((s) => {
       const i = s.lines.findIndex((l) => l.drugId === d.id);
@@ -32,7 +35,7 @@ export const usePos = create<PosState>((set, get) => ({
       return {
         lines: [
           ...s.lines,
-          { drugId: d.id, name: d.name, strength: d.strength, qty: 1, unitPrice: d.unitPrice, taxRate: d.taxRate },
+          { drugId: d.id, name: d.name, strength: d.strength, qty: 1, unitPrice: d.unitPrice, taxRate: d.taxRate, costPrice: d.costPrice },
         ],
       };
     }),
@@ -42,7 +45,7 @@ export const usePos = create<PosState>((set, get) => ({
         : s.lines.map((l) => (l.drugId === drugId ? { ...l, qty } : l)),
     })),
   remove: (drugId) => set((s) => ({ lines: s.lines.filter((l) => l.drugId !== drugId) })),
-  clear: () => set({ lines: [] }),
+  clear: () => set({ lines: [], discount: null }),
   hold: (note) => {
     const { lines, held } = get();
     if (!lines.length) return;
@@ -55,4 +58,5 @@ export const usePos = create<PosState>((set, get) => ({
     set({ lines: h.lines, held: held.filter((x) => x.id !== id) });
   },
   setLastSale: (s) => set({ lastSale: s }),
+  setDiscount: (d) => set({ discount: d }),
 }));

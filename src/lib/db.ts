@@ -5,7 +5,9 @@
  * zero connectivity. A sync queue replays mutations to Supabase when online.
  */
 import Dexie, { type Table } from 'dexie';
-import type { AppSettings, AuditEntry, Drug, OnlineOrder, Sale, SyncTask } from './types';
+import type {
+  AppSettings, AuditEntry, Customer, Drug, OnlineOrder, PurchaseOrder, Sale, Supplier, SyncTask,
+} from './types';
 
 class VitcareDB extends Dexie {
   drugs!: Table<Drug, string>;
@@ -14,6 +16,9 @@ class VitcareDB extends Dexie {
   audit!: Table<AuditEntry, string>;
   syncQueue!: Table<SyncTask, number>;
   settings!: Table<AppSettings, string>;
+  customers!: Table<Customer, string>;
+  suppliers!: Table<Supplier, string>;
+  purchaseOrders!: Table<PurchaseOrder, string>;
 
   constructor() {
     super('vitcare');
@@ -24,6 +29,11 @@ class VitcareDB extends Dexie {
       audit: 'id, at, synced',
       syncQueue: '++id, table, createdAt',
       settings: 'id',
+    });
+    this.version(2).stores({
+      customers: 'id, name, phone, updatedAt',
+      suppliers: 'id, name, updatedAt',
+      purchaseOrders: 'id, supplierId, status, createdAt',
     });
   }
 }
@@ -41,7 +51,7 @@ export async function getSettings(): Promise<AppSettings> {
     soundOn: true,
     darkMode: false,
     vatRate: 0.16,
-    companyName: process.env.NEXT_PUBLIC_COMPANY_NAME || 'Vitcare Healthcare Limited',
+    companyName: process.env.NEXT_PUBLIC_COMPANY_NAME || 'Vitcare Pharmacy and Medical Centre',
     kraPin: process.env.NEXT_PUBLIC_KRA_PIN || 'P051234567X',
     invoiceSeq: 0,
   };
@@ -123,6 +133,7 @@ export async function seedIfEmpty() {
       stock: r[6],
       reorderLevel: r[7],
       unitPrice: r[5],
+      costPrice: Math.round(r[5] * 0.6 * 100) / 100, // demo margin: ~40% markup
       taxRate: r[8],
       category: r[9],
       barcode: `616${String(1000000000 + i * 137)}`,

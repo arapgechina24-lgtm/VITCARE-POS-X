@@ -3,8 +3,8 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { Cross, ShieldCheck, WifiOff, Smartphone } from 'lucide-react';
 
-const NAME = process.env.NEXT_PUBLIC_COMPANY_NAME || 'Vitcare Healthcare Limited';
-const TAGLINE = process.env.NEXT_PUBLIC_COMPANY_TAGLINE || 'Your Trusted Pharmacy Partner in Nairobi';
+const NAME = process.env.NEXT_PUBLIC_COMPANY_NAME || 'Vitcare Pharmacy and Medical Centre';
+const TAGLINE = process.env.NEXT_PUBLIC_COMPANY_TAGLINE || 'Your Trusted Pharmacy Partner in Naivasha';
 
 export default function Splash() {
   return (

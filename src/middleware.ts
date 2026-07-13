@@ -31,6 +31,16 @@ export async function middleware(req: NextRequest) {
     to.pathname = '/login';
     return NextResponse.redirect(to);
   }
+
+  // Settings is admin-only — enforce server-side, not just via hidden nav.
+  if (req.nextUrl.pathname.startsWith('/dashboard/settings')) {
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
+    if (profile?.role !== 'admin') {
+      const to = req.nextUrl.clone();
+      to.pathname = '/dashboard';
+      return NextResponse.redirect(to);
+    }
+  }
   return res;
 }
 
