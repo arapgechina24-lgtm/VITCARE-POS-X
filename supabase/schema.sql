@@ -72,7 +72,8 @@ create table if not exists sales (
   created_at bigint not null,
   synced int default 1,
   etims jsonb,
-  refunds jsonb default '[]'::jsonb
+  refunds jsonb default '[]'::jsonb,
+  insurance_claim_id text
 );
 
 create table if not exists orders (
@@ -112,6 +113,8 @@ create table if not exists customers (
   kra_pin text,
   notes text,
   loyalty_points int default 0,
+  insurance_provider_id text,
+  insurance_member_no text,
   created_at bigint not null,
   updated_at bigint not null
 );
@@ -140,6 +143,43 @@ create table if not exists purchase_orders (
   received_at bigint
 );
 
+-- Payers that settle bills on a member's behalf: NHIF/SHA, private insurers
+-- (AAR, Jubilee, Britam…), or a corporate self-funded scheme (e.g. KenGen).
+create table if not exists insurance_providers (
+  id text primary key,
+  name text not null,
+  payer_type text not null default 'private' check (payer_type in ('nhif','private','corporate')),
+  contact_person text,
+  phone text,
+  claim_email text,
+  default_co_pay_percent numeric default 0,
+  notes text,
+  created_at bigint not null,
+  updated_at bigint not null
+);
+
+-- One row per insurance-billed sale; tracks the claim from filing to payment.
+create table if not exists insurance_claims (
+  id text primary key,
+  sale_id text references sales(id) on delete cascade,
+  invoice_no text not null,
+  provider_id text references insurance_providers(id) on delete set null,
+  provider_name text not null,
+  member_no text not null,
+  patient_name text not null,
+  claim_amount numeric not null,
+  co_pay_amount numeric default 0,
+  status text not null default 'pending' check (status in ('pending','submitted','approved','rejected','paid')),
+  approved_amount numeric,
+  rejection_reason text,
+  submitted_at bigint,
+  responded_at bigint,
+  paid_at bigint,
+  notes text,
+  created_at bigint not null,
+  updated_at bigint not null
+);
+
 -- ── Row Level Security ────────────────────────────────────────────────────
 alter table profiles enable row level security;
 alter table drugs enable row level security;
@@ -150,6 +190,8 @@ alter table payments enable row level security;   -- no anon policies: service-r
 alter table customers enable row level security;
 alter table suppliers enable row level security;
 alter table purchase_orders enable row level security;
+alter table insurance_providers enable row level security;
+alter table insurance_claims enable row level security;
 
 create policy "read own profile" on profiles for select using (auth.uid() = id);
 
@@ -185,6 +227,18 @@ create policy "staff read po"  on purchase_orders for select using (auth.role() 
 create policy "staff write po" on purchase_orders for all
   using (role_of(auth.uid()) in ('admin','pharmacist'))
   with check (role_of(auth.uid()) in ('admin','pharmacist'));
+
+create policy "staff read insurance providers"  on insurance_providers for select using (auth.role() = 'authenticated');
+create policy "staff write insurance providers" on insurance_providers for all
+  using (role_of(auth.uid()) in ('admin','pharmacist'))
+  with check (role_of(auth.uid()) in ('admin','pharmacist'));
+
+create policy "staff read claims" on insurance_claims for select using (auth.role() = 'authenticated');
+-- Any staff role can file a claim at checkout (mirrors "staff write sales" above).
+create policy "staff create claims" on insurance_claims for insert with check (auth.role() = 'authenticated');
+-- Progressing a claim (submit/approve/reject/paid) is a higher-trust action.
+create policy "staff manage claims" on insurance_claims for update
+  using (role_of(auth.uid()) in ('admin','pharmacist'));
 
 -- Customers (anon) may create orders from the shop; only staff read/manage them
 create policy "public create order" on orders for insert with check (true);

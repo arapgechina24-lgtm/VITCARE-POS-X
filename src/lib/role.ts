@@ -35,6 +35,7 @@ export const CAN = {
   viewReports: (r: Role) => r === 'admin' || r === 'pharmacist',
   manageDirectory: (r: Role) => r === 'admin' || r === 'pharmacist', // customers & suppliers
   processRefunds: (r: Role) => r === 'admin' || r === 'pharmacist',
+  manageInsurance: (r: Role) => r === 'admin' || r === 'pharmacist', // providers & claim lifecycle
 };
 
 export const ROLE_LABEL: Record<Role, string> = {

@@ -33,6 +33,7 @@ export default function ReportsPage() {
   const drugs = useLiveQuery(() => db.drugs.toArray(), [], []);
   const audit = useLiveQuery(() => db.audit.orderBy('at').reverse().limit(30).toArray(), [], []);
   const purchaseOrders = useLiveQuery(() => db.purchaseOrders.toArray(), [], []);
+  const claims = useLiveQuery(() => db.insuranceClaims.toArray(), [], []);
 
   /** Nets out refunds. The excl./VAT split is prorated by the post-refund ratio
    *  (an approximation when a refund only covers some lines); COGS below is exact
@@ -56,6 +57,10 @@ export default function ReportsPage() {
   const cashOut = (purchaseOrders ?? [])
     .filter((po) => po.status === 'received' && (po.receivedAt ?? 0) >= from)
     .reduce((a, po) => a + po.total, 0);
+  // Balance-sheet figure (not period-filtered) — money billed to payers, not yet received as cash.
+  const insuranceReceivable = (claims ?? [])
+    .filter((c) => c.status !== 'paid' && c.status !== 'rejected')
+    .reduce((a, c) => a + (c.approvedAmount ?? c.claimAmount), 0);
 
   const topDrugs = Object.values(
     (sales ?? []).flatMap((s) => s.lines).reduce<Record<string, { name: string; qty: number; rev: number }>>((m, l) => {
@@ -99,6 +104,7 @@ export default function ReportsPage() {
              <tr><td>Gross profit</td><td class="right">${KES(grossProfit)}</td></tr>
              <tr><td>Transactions</td><td class="right">${(sales ?? []).length}</td></tr>
              <tr><td>Inventory value (excl.)</td><td class="right">${KES(inventoryValue)}</td></tr>
+             <tr><td>Insurance receivables (outstanding)</td><td class="right">${KES(insuranceReceivable)}</td></tr>
            </tbody></table>
            <h2>Top sellers</h2>
            <table><thead><tr><th>Product</th><th>Units</th><th>Revenue</th></tr></thead><tbody>
@@ -120,11 +126,12 @@ export default function ReportsPage() {
         </button>
       </div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <Stat label="Revenue (incl. VAT)" value={KES(revenue)} />
         <Stat label="Gross profit" value={KES(grossProfit)} />
         <Stat label="VAT collected" value={KES(tax)} />
         <Stat label="Inventory value (excl.)" value={KES(inventoryValue)} />
+        <Stat label="Insurance receivables" value={KES(insuranceReceivable)} />
       </div>
 
       <div className="card p-5">
@@ -134,6 +141,11 @@ export default function ReportsPage() {
           <p className="flex justify-between sm:block"><span className="text-ink/50">Cash out (purchases received)</span><span className="font-mono font-bold block text-amber-600">-{KES(cashOut)}</span></p>
           <p className="flex justify-between sm:block"><span className="text-ink/50">Net cash flow</span><span className="font-mono font-bold block">{KES(revenue - cashOut)}</span></p>
         </div>
+        {insuranceReceivable > 0 && (
+          <p className="text-[11px] text-ink/40 mt-3">
+            Includes {KES(insuranceReceivable)} in insurance-billed sales counted as revenue above but not yet paid out by the payer — see Insurance claims.
+          </p>
+        )}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">

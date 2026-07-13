@@ -33,7 +33,7 @@ export interface CartLine {
   costPrice?: number;       // excl. tax, frozen at sale time — drives profit reporting
 }
 
-export type PaymentMethod = 'cash' | 'mpesa' | 'card' | 'mobile_money';
+export type PaymentMethod = 'cash' | 'mpesa' | 'card' | 'mobile_money' | 'insurance';
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'partially_refunded';
 
 /** A discount applied to the whole sale, before tax is scaled proportionally. */
@@ -72,6 +72,7 @@ export interface Sale {
   synced: 0 | 1;
   etims?: EtimsStamp;
   refunds?: RefundRecord[];
+  insuranceClaimId?: string;
 }
 
 /** KRA VAT tax category: A = Exempt (0% — most human medicines), B = Standard (16%). */
@@ -111,6 +112,49 @@ export interface Customer {
   kraPin?: string;
   notes?: string;
   loyaltyPoints: number;
+  insuranceProviderId?: string;
+  insuranceMemberNo?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** A payer that settles medical bills on a member's behalf — a national scheme
+ *  (NHIF/SHA), a private insurer (AAR, Jubilee, Britam…), or a corporate
+ *  self-funded scheme (e.g. KenGen Medical Scheme) that pays claims directly. */
+export interface InsuranceProvider {
+  id: string;
+  name: string;
+  payerType: 'nhif' | 'private' | 'corporate';
+  contactPerson?: string;
+  phone?: string;
+  claimEmail?: string;       // where batched claims get submitted
+  defaultCoPayPercent: number; // 0-100, applied at checkout as a starting suggestion
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type ClaimStatus = 'pending' | 'submitted' | 'approved' | 'rejected' | 'paid';
+
+/** Lifecycle record for a single insurance-billed sale: pending (just made) →
+ *  submitted (sent to payer) → approved/rejected → paid (money received). */
+export interface InsuranceClaim {
+  id: string;
+  saleId: string;
+  invoiceNo: string;
+  providerId: string;
+  providerName: string;
+  memberNo: string;
+  patientName: string;
+  claimAmount: number;      // billed to the insurer, KES incl. VAT
+  coPayAmount: number;      // collected from the patient at the counter
+  status: ClaimStatus;
+  approvedAmount?: number;  // may differ from claimAmount after adjudication
+  rejectionReason?: string;
+  submittedAt?: number;
+  respondedAt?: number;
+  paidAt?: number;
+  notes?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -148,7 +192,8 @@ export interface PurchaseOrder {
 
 export interface SyncTask {
   id?: number;
-  table: 'drugs' | 'sales' | 'orders' | 'audit' | 'customers' | 'suppliers' | 'purchaseOrders';
+  table: 'drugs' | 'sales' | 'orders' | 'audit' | 'customers' | 'suppliers' | 'purchaseOrders'
+    | 'insuranceProviders' | 'insuranceClaims';
   op: 'upsert' | 'delete';
   payload: unknown;
   createdAt: number;

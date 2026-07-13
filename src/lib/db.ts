@@ -6,7 +6,8 @@
  */
 import Dexie, { type Table } from 'dexie';
 import type {
-  AppSettings, AuditEntry, Customer, Drug, OnlineOrder, PurchaseOrder, Sale, Supplier, SyncTask,
+  AppSettings, AuditEntry, Customer, Drug, InsuranceClaim, InsuranceProvider, OnlineOrder,
+  PurchaseOrder, Sale, Supplier, SyncTask,
 } from './types';
 
 class VitcareDB extends Dexie {
@@ -19,6 +20,8 @@ class VitcareDB extends Dexie {
   customers!: Table<Customer, string>;
   suppliers!: Table<Supplier, string>;
   purchaseOrders!: Table<PurchaseOrder, string>;
+  insuranceProviders!: Table<InsuranceProvider, string>;
+  insuranceClaims!: Table<InsuranceClaim, string>;
 
   constructor() {
     super('vitcare');
@@ -34,6 +37,10 @@ class VitcareDB extends Dexie {
       customers: 'id, name, phone, updatedAt',
       suppliers: 'id, name, updatedAt',
       purchaseOrders: 'id, supplierId, status, createdAt',
+    });
+    this.version(3).stores({
+      insuranceProviders: 'id, name, updatedAt',
+      insuranceClaims: 'id, saleId, providerId, status, createdAt',
     });
   }
 }
@@ -146,4 +153,22 @@ export async function seedIfEmpty() {
   const soon = new Date(); soon.setDate(soon.getDate() + 45);
   drugs[16].expiryDate = soon.toISOString().slice(0, 10);
   await db.drugs.bulkAdd(drugs);
+}
+
+const PROVIDERS: Array<[string, InsuranceProvider['payerType'], number]> = [
+  ['NHIF / SHA', 'nhif', 0],
+  ['KenGen Medical Scheme', 'corporate', 0],
+  ['AAR Insurance', 'private', 10],
+  ['Jubilee Insurance', 'private', 10],
+];
+
+/** Seeds a starter set of payers so the Insurance module is usable out of the box.
+ *  Real pharmacies edit/replace these with their actual approved schemes. */
+export async function seedInsuranceIfEmpty() {
+  const count = await db.insuranceProviders.count();
+  if (count > 0) return;
+  const now = Date.now();
+  await db.insuranceProviders.bulkAdd(PROVIDERS.map(([name, payerType, coPay]) => ({
+    id: uid(), name, payerType, defaultCoPayPercent: coPay, createdAt: now, updatedAt: now,
+  })));
 }

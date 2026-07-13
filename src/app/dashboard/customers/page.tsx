@@ -2,11 +2,11 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Plus, Search, Pencil, Trash2, X, Phone } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, X, Phone, ShieldPlus } from 'lucide-react';
 import { db, logAudit, uid } from '@/lib/db';
 import { KES } from '@/lib/utils';
 import { CAN, useRole } from '@/lib/role';
-import type { Customer } from '@/lib/types';
+import type { Customer, InsuranceProvider } from '@/lib/types';
 
 const EMPTY: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'> = {
   name: '', phone: '', email: '', kraPin: '', notes: '', loyaltyPoints: 0,
@@ -20,13 +20,17 @@ export default function CustomersPage() {
 
   const customers = useLiveQuery(() => db.customers.orderBy('name').toArray(), [], []);
   const sales = useLiveQuery(() => db.sales.where('status').anyOf('paid', 'partially_refunded').toArray(), [], []);
+  const providers = useLiveQuery(() => db.insuranceProviders.toArray(), [], []);
+  const providerName = (id?: string) => (providers ?? []).find((p) => p.id === id)?.name;
 
   const visible = (customers ?? []).filter((c) =>
     !q.trim() || [c.name, c.phone, c.email ?? ''].some((f) => f.toLowerCase().includes(q.toLowerCase())));
 
-  /** Purchase history is derived by matching phone — sales aren't forced to reference a customer record. */
+  /** Purchase history is derived by matching customerId (when the sale was linked to
+   *  this record, e.g. via insurance lookup) or phone — sales aren't required to
+   *  reference a customer record, so this stays a best-effort match. */
   function statsFor(c: Customer) {
-    const matches = (sales ?? []).filter((s) => s.customerPhone && s.customerPhone === c.phone);
+    const matches = (sales ?? []).filter((s) => s.customerId === c.id || (s.customerPhone && s.customerPhone === c.phone));
     return { visits: matches.length, spent: matches.reduce((a, s) => a + s.total, 0) };
   }
 
@@ -77,6 +81,9 @@ export default function CustomersPage() {
                   <td className="p-3">
                     <p className="font-semibold">{c.name}</p>
                     {c.kraPin && <p className="text-xs text-ink/50 font-mono">{c.kraPin}</p>}
+                    {c.insuranceProviderId && (
+                      <span className="chip bg-mint text-fir mt-1"><ShieldPlus className="w-3 h-3" /> {providerName(c.insuranceProviderId)}</span>
+                    )}
                   </td>
                   <td className="p-3 text-xs">
                     <a href={`tel:${c.phone}`} className="flex items-center gap-1 text-fir"><Phone className="w-3 h-3" /> {c.phone}</a>
@@ -102,15 +109,15 @@ export default function CustomersPage() {
 
       <AnimatePresence>
         {editing && (
-          <CustomerModal initial={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSave={save} />
+          <CustomerModal initial={editing === 'new' ? null : editing} providers={providers ?? []} onClose={() => setEditing(null)} onSave={save} />
         )}
       </AnimatePresence>
     </div>
   );
 }
 
-function CustomerModal({ initial, onClose, onSave }: {
-  initial: Customer | null; onClose: () => void; onSave: (c: Customer) => void;
+function CustomerModal({ initial, providers, onClose, onSave }: {
+  initial: Customer | null; providers: InsuranceProvider[]; onClose: () => void; onSave: (c: Customer) => void;
 }) {
   const [f, setF] = useState<Customer>(initial ?? { ...EMPTY, id: uid(), createdAt: Date.now(), updatedAt: Date.now() });
   const set = <K extends keyof Customer>(k: K, v: Customer[K]) => setF({ ...f, [k]: v });
@@ -129,6 +136,14 @@ function CustomerModal({ initial, onClose, onSave }: {
           <input className="input" placeholder="Phone (07XX…) *" required value={f.phone} onChange={(e) => set('phone', e.target.value)} />
           <input className="input" placeholder="Email (optional)" type="email" value={f.email ?? ''} onChange={(e) => set('email', e.target.value)} />
           <input className="input" placeholder="KRA PIN (optional)" value={f.kraPin ?? ''} onChange={(e) => set('kraPin', e.target.value.toUpperCase())} />
+          <div className="grid grid-cols-2 gap-2">
+            <select className="input" value={f.insuranceProviderId ?? ''} onChange={(e) => set('insuranceProviderId', e.target.value || undefined)}>
+              <option value="">No insurance on file</option>
+              {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <input className="input" placeholder="Member / policy no." value={f.insuranceMemberNo ?? ''}
+              disabled={!f.insuranceProviderId} onChange={(e) => set('insuranceMemberNo', e.target.value)} />
+          </div>
           <textarea className="input" placeholder="Notes — allergies, prescriptions, preferences…" rows={3}
             value={f.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
           <button className="btn-primary w-full">Save customer</button>

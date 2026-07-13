@@ -4,13 +4,13 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Search, Plus, Minus, Trash2, PauseCircle, PlayCircle, Banknote,
-  Smartphone, Printer, CheckCircle2, Loader2, XCircle, ScanBarcode, Tag, X,
+  Smartphone, Printer, CheckCircle2, Loader2, XCircle, ScanBarcode, Tag, X, ShieldPlus,
 } from 'lucide-react';
 import { db, logAudit, nextInvoiceNo, uid } from '@/lib/db';
 import { usePos } from '@/lib/store';
 import { cartTotals, demoEtimsStamp, KES, lineTotals } from '@/lib/utils';
 import { sounds } from '@/lib/sounds';
-import type { Discount, PaymentMethod, Sale } from '@/lib/types';
+import type { Discount, InsuranceClaim, PaymentMethod, Sale } from '@/lib/types';
 import Receipt from '@/components/Receipt';
 
 type PayState =
@@ -18,6 +18,7 @@ type PayState =
   | { step: 'cash' }
   | { step: 'mpesa-phone' }
   | { step: 'mpesa-wait'; id: string }
+  | { step: 'insurance' }
   | { step: 'done'; sale: Sale }
   | { step: 'failed'; reason: string };
 
@@ -32,6 +33,10 @@ export default function PosPage() {
   const [discountOpen, setDiscountOpen] = useState(false);
   const [discountType, setDiscountType] = useState<Discount['type']>('percent');
   const [discountValue, setDiscountValue] = useState('');
+  const [providerId, setProviderId] = useState('');
+  const [memberNo, setMemberNo] = useState('');
+  const [coPay, setCoPay] = useState('');
+  const [matchedCustomerId, setMatchedCustomerId] = useState('');
 
   const drugs = useLiveQuery(async () => {
     const all = await db.drugs.toArray();
@@ -41,6 +46,8 @@ export default function PosPage() {
       [d.name, d.genericName, d.category, d.barcode].some((f) => f.toLowerCase().includes(term)),
     ).slice(0, 24);
   }, [q], []);
+  const providers = useLiveQuery(() => db.insuranceProviders.orderBy('name').toArray(), [], []);
+  const selectedProvider = (providers ?? []).find((p) => p.id === providerId);
 
   const totals = useMemo(() => cartTotals(lines, discount), [lines, discount]);
   const change = Number(cashGiven || 0) - totals.total;
@@ -56,6 +63,7 @@ export default function PosPage() {
       });
       if (res.ok) etims = await res.json();
     } catch { /* offline — keep the local simulated stamp */ }
+
     const sale: Sale = {
       id: uid(),
       invoiceNo,
@@ -64,6 +72,7 @@ export default function PosPage() {
       discount: discount ?? undefined,
       method,
       status: 'paid',
+      customerId: matchedCustomerId || undefined,
       customerName: custName || undefined,
       customerPin: custPin || undefined,
       customerPhone: phone || undefined,
@@ -72,19 +81,67 @@ export default function PosPage() {
       synced: 0,
       etims,
     };
-    await db.transaction('rw', db.sales, db.drugs, db.syncQueue, async () => {
+
+    let claim: InsuranceClaim | undefined;
+    if (method === 'insurance' && selectedProvider) {
+      const coPayAmount = Math.min(Math.max(0, Number(coPay) || 0), totals.total);
+      claim = {
+        id: uid(),
+        saleId: sale.id,
+        invoiceNo,
+        providerId: selectedProvider.id,
+        providerName: selectedProvider.name,
+        memberNo,
+        patientName: custName || 'Walk-in',
+        claimAmount: totals.total - coPayAmount,
+        coPayAmount,
+        status: 'pending',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      sale.insuranceClaimId = claim.id;
+    }
+
+    await db.transaction('rw', db.sales, db.drugs, db.syncQueue, db.insuranceClaims, async () => {
       await db.sales.add(sale);
       for (const l of lines) {
         const d = await db.drugs.get(l.drugId);
         if (d) await db.drugs.update(l.drugId, { stock: Math.max(0, d.stock - l.qty), updatedAt: Date.now() });
       }
       await db.syncQueue.add({ table: 'sales', op: 'upsert', payload: sale, createdAt: Date.now() });
+      if (claim) {
+        await db.insuranceClaims.add(claim);
+        await db.syncQueue.add({ table: 'insuranceClaims', op: 'upsert', payload: claim, createdAt: Date.now() });
+      }
     });
     await logAudit('cashier', 'sale', `${invoiceNo} · ${KES(sale.total)} · ${method}`);
+    if (claim) await logAudit('cashier', 'claim.create', `${invoiceNo} · ${claim.providerName} · ${KES(claim.claimAmount)}`);
     clear();
     setCashGiven(''); setPhone(''); setCustName(''); setCustPin(''); setDiscountOpen(false); setDiscountValue('');
+    setProviderId(''); setMemberNo(''); setCoPay(''); setMatchedCustomerId('');
     sounds.success();
     setPay({ step: 'done', sale });
+  }
+
+  /** Looks up a saved customer by phone (or name) to auto-fill their insurance
+   *  details — avoids re-keying a member number on every repeat visit. */
+  async function openInsurance() {
+    const match = phone
+      ? await db.customers.where('phone').equals(phone).first()
+      : custName
+        ? (await db.customers.where('name').equalsIgnoreCase(custName).first())
+        : undefined;
+    if (match) {
+      setMatchedCustomerId(match.id);
+      if (match.insuranceProviderId) {
+        setProviderId(match.insuranceProviderId);
+        setMemberNo(match.insuranceMemberNo ?? '');
+        const p = (providers ?? []).find((x) => x.id === match.insuranceProviderId);
+        setCoPay(p ? String(Math.round(totals.total * p.defaultCoPayPercent) / 100) : '');
+      }
+    }
+    setPay({ step: 'insurance' });
+    sounds.tap();
   }
 
   async function promptMpesa() {
@@ -258,12 +315,16 @@ export default function PosPage() {
           <p className="flex justify-between text-lg font-bold"><span>Total</span><span className="font-mono">{KES(totals.total)}</span></p>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <button className="btn-primary" disabled={!lines.length} onClick={() => { setPay({ step: 'cash' }); sounds.tap(); }}>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          <button className="btn-primary text-sm px-2" disabled={!lines.length} onClick={() => { setPay({ step: 'cash' }); sounds.tap(); }}>
             <Banknote className="w-4 h-4" /> Cash
           </button>
-          <button className="btn-leaf" disabled={!lines.length} onClick={() => { setPay({ step: 'mpesa-phone' }); sounds.tap(); }}>
+          <button className="btn-leaf text-sm px-2" disabled={!lines.length} onClick={() => { setPay({ step: 'mpesa-phone' }); sounds.tap(); }}>
             <Smartphone className="w-4 h-4" /> M-Pesa
+          </button>
+          <button className="btn-ghost border border-mint-deep text-sm px-2" disabled={!lines.length || !(providers ?? []).length}
+            onClick={() => void openInsurance()}>
+            <ShieldPlus className="w-4 h-4" /> Insurance
           </button>
         </div>
       </aside>
@@ -305,6 +366,34 @@ export default function PosPage() {
                     <Smartphone className="w-4 h-4" /> Prompt customer
                   </button>
                   <p className="text-xs text-ink/50">An STK push will pop up on the customer&apos;s phone to confirm.</p>
+                </div>
+              )}
+
+              {pay.step === 'insurance' && (
+                <div className="space-y-4">
+                  <h3 className="font-bold text-lg">Bill to insurance</h3>
+                  <p className="text-3xl font-mono font-bold text-fir">{KES(totals.total)}</p>
+                  <select className="input" value={providerId} onChange={(e) => {
+                    setProviderId(e.target.value);
+                    const p = (providers ?? []).find((x) => x.id === e.target.value);
+                    setCoPay(p ? String(Math.round(totals.total * p.defaultCoPayPercent) / 100) : '');
+                  }} autoFocus>
+                    <option value="">Select payer…</option>
+                    {(providers ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                  <input className="input" placeholder="Member / policy number" value={memberNo} onChange={(e) => setMemberNo(e.target.value)} />
+                  <label className="block text-xs text-ink/50">Co-pay collected from patient now (KES)
+                    <input className="input mt-1 font-mono" inputMode="decimal"
+                      value={coPay} onChange={(e) => setCoPay(e.target.value.replace(/[^\d.]/g, ''))} />
+                  </label>
+                  <p className="flex justify-between text-sm text-ink/60 border-t border-dashed border-mint-deep pt-2">
+                    <span>Amount claimed from {selectedProvider?.name ?? 'payer'}</span>
+                    <span className="font-mono">{KES(Math.max(0, totals.total - (Number(coPay) || 0)))}</span>
+                  </p>
+                  <button className="btn-primary w-full" disabled={!providerId || !memberNo.trim()}
+                    onClick={() => void completeSale('insurance')}>
+                    <ShieldPlus className="w-4 h-4" /> Complete sale &amp; file claim
+                  </button>
                 </div>
               )}
 
