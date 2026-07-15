@@ -82,7 +82,7 @@ export default function InsightsPage() {
       {/* AI briefing */}
       <div className="card p-5">
         <div className="flex items-center justify-between">
-          <p className="font-semibold flex items-center gap-2"><Sparkles className="w-4 h-4 text-leaf" /> Vita's weekly briefing</p>
+          <p className="font-semibold flex items-center gap-2"><Sparkles className="w-4 h-4 text-leaf" /> Vita&apos;s weekly briefing</p>
           <button className="btn-leaf text-sm" disabled={briefingState === 'loading'} onClick={() => void askVita()}>
             {briefingState === 'loading' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             {briefing ? 'Regenerate' : 'Generate briefing'}

@@ -154,6 +154,7 @@ create table if not exists purchase_orders (
   created_at bigint not null,
   received_at bigint
 );
+create index if not exists idx_purchase_orders_supplier_id on purchase_orders(supplier_id);
 
 -- Payers that settle bills on a member's behalf: NHIF/SHA, private insurers
 -- (AAR, Jubilee, Britam…), or a corporate self-funded scheme (e.g. KenGen).
@@ -191,6 +192,8 @@ create table if not exists insurance_claims (
   created_at bigint not null,
   updated_at bigint not null
 );
+create index if not exists idx_insurance_claims_provider_id on insurance_claims(provider_id);
+create index if not exists idx_insurance_claims_sale_id on insurance_claims(sale_id);
 
 -- ── Row Level Security ────────────────────────────────────────────────────
 alter table profiles enable row level security;
@@ -205,58 +208,75 @@ alter table purchase_orders enable row level security;
 alter table insurance_providers enable row level security;
 alter table insurance_claims enable row level security;
 
-create policy "read own profile" on profiles for select using (auth.uid() = id);
+-- Every USING/WITH CHECK below wraps auth.uid()/auth.role() in (select ...) —
+-- this makes Postgres evaluate them once per query instead of once per row
+-- (see the auth_rls_initplan advisor lint). Write access is split into
+-- separate insert/update/delete policies rather than `for all`, since a `for
+-- all` policy also matches SELECT and would double up with the dedicated
+-- read policy on every read (the multiple_permissive_policies lint).
+
+create policy "read own profile" on profiles for select using ((select auth.uid()) = id);
 
 -- Staff (any authenticated role) can read the catalog; write requires pharmacist/admin
-create policy "staff read drugs"  on drugs for select using (auth.role() = 'authenticated');
-create policy "staff write drugs" on drugs for all
-  using (role_of(auth.uid()) in ('admin','pharmacist'))
-  with check (role_of(auth.uid()) in ('admin','pharmacist'));
+create policy "staff read drugs" on drugs for select using ((select auth.role()) = 'authenticated');
+create policy "staff insert drugs" on drugs for insert with check (role_of((select auth.uid())) in ('admin','pharmacist'));
+create policy "staff update drugs" on drugs for update
+  using (role_of((select auth.uid())) in ('admin','pharmacist'))
+  with check (role_of((select auth.uid())) in ('admin','pharmacist'));
+create policy "staff delete drugs" on drugs for delete using (role_of((select auth.uid())) in ('admin','pharmacist'));
 
-create policy "staff read sales"  on sales for select using (auth.role() = 'authenticated');
+create policy "staff read sales" on sales for select using ((select auth.role()) = 'authenticated');
 -- Every staff role (cashiers included) records sales — that's the point of the role.
-create policy "staff write sales" on sales for insert with check (auth.role() = 'authenticated');
+create policy "staff write sales" on sales for insert with check ((select auth.role()) = 'authenticated');
 -- Refunds/voids (status update on an existing sale) are a higher-trust action.
 create policy "staff refund sales" on sales for update
-  using (role_of(auth.uid()) in ('admin','pharmacist'));
+  using (role_of((select auth.uid())) in ('admin','pharmacist'));
 
-create policy "staff read audit"  on audit for select using (role_of(auth.uid()) in ('admin','pharmacist'));
-create policy "staff write audit" on audit for insert with check (auth.role() = 'authenticated');
+create policy "staff read audit" on audit for select using (role_of((select auth.uid())) in ('admin','pharmacist'));
+create policy "staff write audit" on audit for insert with check ((select auth.role()) = 'authenticated');
 
 -- Customers, suppliers & purchase orders: all staff can read (e.g. cashier looking
 -- up a customer at checkout); writes require admin/pharmacist.
-create policy "staff read customers"  on customers for select using (auth.role() = 'authenticated');
-create policy "staff write customers" on customers for all
-  using (role_of(auth.uid()) in ('admin','pharmacist'))
-  with check (role_of(auth.uid()) in ('admin','pharmacist'));
+create policy "staff read customers" on customers for select using ((select auth.role()) = 'authenticated');
+create policy "staff insert customers" on customers for insert with check (role_of((select auth.uid())) in ('admin','pharmacist'));
+create policy "staff update customers" on customers for update
+  using (role_of((select auth.uid())) in ('admin','pharmacist'))
+  with check (role_of((select auth.uid())) in ('admin','pharmacist'));
+create policy "staff delete customers" on customers for delete using (role_of((select auth.uid())) in ('admin','pharmacist'));
 
-create policy "staff read suppliers"  on suppliers for select using (auth.role() = 'authenticated');
-create policy "staff write suppliers" on suppliers for all
-  using (role_of(auth.uid()) in ('admin','pharmacist'))
-  with check (role_of(auth.uid()) in ('admin','pharmacist'));
+create policy "staff read suppliers" on suppliers for select using ((select auth.role()) = 'authenticated');
+create policy "staff insert suppliers" on suppliers for insert with check (role_of((select auth.uid())) in ('admin','pharmacist'));
+create policy "staff update suppliers" on suppliers for update
+  using (role_of((select auth.uid())) in ('admin','pharmacist'))
+  with check (role_of((select auth.uid())) in ('admin','pharmacist'));
+create policy "staff delete suppliers" on suppliers for delete using (role_of((select auth.uid())) in ('admin','pharmacist'));
 
-create policy "staff read po"  on purchase_orders for select using (auth.role() = 'authenticated');
-create policy "staff write po" on purchase_orders for all
-  using (role_of(auth.uid()) in ('admin','pharmacist'))
-  with check (role_of(auth.uid()) in ('admin','pharmacist'));
+create policy "staff read po" on purchase_orders for select using ((select auth.role()) = 'authenticated');
+create policy "staff insert po" on purchase_orders for insert with check (role_of((select auth.uid())) in ('admin','pharmacist'));
+create policy "staff update po" on purchase_orders for update
+  using (role_of((select auth.uid())) in ('admin','pharmacist'))
+  with check (role_of((select auth.uid())) in ('admin','pharmacist'));
+create policy "staff delete po" on purchase_orders for delete using (role_of((select auth.uid())) in ('admin','pharmacist'));
 
-create policy "staff read insurance providers"  on insurance_providers for select using (auth.role() = 'authenticated');
-create policy "staff write insurance providers" on insurance_providers for all
-  using (role_of(auth.uid()) in ('admin','pharmacist'))
-  with check (role_of(auth.uid()) in ('admin','pharmacist'));
+create policy "staff read insurance providers" on insurance_providers for select using ((select auth.role()) = 'authenticated');
+create policy "staff insert insurance providers" on insurance_providers for insert with check (role_of((select auth.uid())) in ('admin','pharmacist'));
+create policy "staff update insurance providers" on insurance_providers for update
+  using (role_of((select auth.uid())) in ('admin','pharmacist'))
+  with check (role_of((select auth.uid())) in ('admin','pharmacist'));
+create policy "staff delete insurance providers" on insurance_providers for delete using (role_of((select auth.uid())) in ('admin','pharmacist'));
 
-create policy "staff read claims" on insurance_claims for select using (auth.role() = 'authenticated');
+create policy "staff read claims" on insurance_claims for select using ((select auth.role()) = 'authenticated');
 -- Any staff role can file a claim at checkout (mirrors "staff write sales" above).
-create policy "staff create claims" on insurance_claims for insert with check (auth.role() = 'authenticated');
+create policy "staff create claims" on insurance_claims for insert with check ((select auth.role()) = 'authenticated');
 -- Progressing a claim (submit/approve/reject/paid) is a higher-trust action.
 create policy "staff manage claims" on insurance_claims for update
-  using (role_of(auth.uid()) in ('admin','pharmacist'));
+  using (role_of((select auth.uid())) in ('admin','pharmacist'));
 
 -- Customers (anon) may create orders from the shop; only staff read/manage them
 create policy "public create order" on orders for insert with check (true);
-create policy "staff read orders"   on orders for select using (auth.role() = 'authenticated');
+create policy "staff read orders" on orders for select using ((select auth.role()) = 'authenticated');
 create policy "staff update orders" on orders for update
-  using (role_of(auth.uid()) in ('admin','pharmacist'));
+  using (role_of((select auth.uid())) in ('admin','pharmacist'));
 
 -- Optional: public read of shop catalog (name/price only — prefer a view)
 create or replace view shop_catalog as
@@ -288,3 +308,9 @@ comment on view public.shop_catalog is
 -- ── Realtime ──────────────────────────────────────────────────────────────
 -- Dashboard → Database → Replication → enable for table `orders`. Already run:
 --   alter publication supabase_realtime add table orders;
+
+-- ── One manual dashboard toggle (not scriptable via SQL) ───────────────────
+-- Authentication → Policies → enable "Leaked password protection" (checks
+-- against HaveIBeenPwned). Login here is passwordless so this mainly guards
+-- any password-based path Supabase itself might expose (e.g. a dashboard
+-- password reset) — cheap defense-in-depth, not a functional requirement.
