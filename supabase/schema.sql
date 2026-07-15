@@ -1,6 +1,18 @@
 -- Vitcare POS — Supabase schema
 -- Run in the Supabase SQL editor (Dashboard → SQL). Then enable Realtime on `orders`.
 
+-- ── Authentication model ────────────────────────────────────────────────────
+-- Login is passwordless email OTP (see src/app/login/page.tsx) — there is no
+-- password to store or leak. Supabase Auth hashes/manages sessions; we never
+-- touch credentials directly. Accounts are admin-provisioned, not self-signup:
+--   1. Dashboard → Authentication → Users → "Add user" → "Send invite email"
+--      (or the Admin API: supabase.auth.admin.inviteUserByEmail / createUser)
+--   2. The trigger below auto-creates their `profiles` row (default: cashier)
+--   3. Promote as needed: update profiles set role = 'admin' where id = '<uuid>';
+--   4. They sign in at /login with just their email — Supabase emails the code.
+-- Optional extra factor: staff can enrol a TOTP authenticator app in Settings
+-- for a second code on top of the email OTP (see supabase.auth.mfa.enroll).
+
 -- ── Roles ─────────────────────────────────────────────────────────────────
 -- Staff roles live in profiles; RLS below enforces admin/pharmacist/cashier.
 -- New signups default to 'cashier' (least privilege); promote via SQL:
@@ -252,5 +264,27 @@ create or replace view shop_catalog as
   from drugs where stock > 0;
 grant select on shop_catalog to anon;
 
+-- ── Function hardening ──────────────────────────────────────────────────────
+-- role_of() and handle_new_user() are only ever meant to be called internally
+-- (by RLS policy expressions and the auth.users trigger respectively) — they
+-- never need to be invoked directly by a client. Revoking EXECUTE from
+-- anon/authenticated closes them off as callable RPCs (/rest/v1/rpc/...)
+-- without affecting RLS policy evaluation or the trigger, since Postgres
+-- evaluates both using the function's own SECURITY DEFINER rights, not the
+-- caller's grants.
+revoke execute on function public.role_of(uuid) from public, anon, authenticated;
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+
+-- shop_catalog is intentionally SECURITY DEFINER: it's the only way anonymous
+-- shop visitors can browse products (stock, price) while the underlying
+-- `drugs` table (cost_price, supplier_id, batch_number, notes) stays fully
+-- locked to authenticated staff. Switching it to SECURITY INVOKER would force
+-- an anon SELECT policy directly on `drugs`, which — since RLS is row-level,
+-- not column-level — would expose those sensitive columns via a direct
+-- /rest/v1/drugs call. This comment documents the accepted advisor exception.
+comment on view public.shop_catalog is
+  'Intentional SECURITY DEFINER: exposes a safe public column subset of drugs without granting anon row access to the base table (which holds cost_price/supplier_id/notes). See migration harden_function_grants.';
+
 -- ── Realtime ──────────────────────────────────────────────────────────────
--- Dashboard → Database → Replication → enable for table `orders`.
+-- Dashboard → Database → Replication → enable for table `orders`. Already run:
+--   alter publication supabase_realtime add table orders;

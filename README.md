@@ -79,7 +79,7 @@ Before real trading:
 src/
   app/
     page.tsx                    Splash / brand intro
-    login/                      Password + TOTP MFA sign-in (demo-aware)
+    login/                      Passwordless email-OTP sign-in + optional TOTP MFA (demo-aware)
     dashboard/                  Staff shell: overview, POS, inventory, orders, reports, settings
     shop/                       Customer catalog + online ordering
     api/mpesa/{stkpush,callback,status}   Daraja server routes

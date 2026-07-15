@@ -1,7 +1,8 @@
 /* Vitcare POS service worker — offline-first app shell */
-const VERSION = 'vitcare-v1';
+const VERSION = 'vitcare-v3';
 const SHELL = ['/', '/login', '/dashboard', '/dashboard/pos', '/dashboard/inventory',
-  '/dashboard/orders', '/dashboard/reports', '/dashboard/settings', '/shop',
+  '/dashboard/orders', '/dashboard/sales', '/dashboard/customers', '/dashboard/suppliers',
+  '/dashboard/insurance', '/dashboard/reports', '/dashboard/insights', '/dashboard/settings', '/shop',
   '/manifest.json', '/icon.svg', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (e) => {

@@ -13,7 +13,7 @@ import Assistant from '@/components/Assistant';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CAN, getRole, ROLE_LABEL, RoleContext } from '@/lib/role';
 import type { Role } from '@/lib/types';
-import { Users, Truck, ShieldPlus } from 'lucide-react';
+import { Users, Truck, ShieldPlus, Sparkles } from 'lucide-react';
 
 const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; show?: (r: Role) => boolean }> = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
@@ -25,6 +25,7 @@ const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; sh
   { href: '/dashboard/suppliers', label: 'Suppliers', icon: Truck, show: CAN.manageDirectory },
   { href: '/dashboard/insurance', label: 'Insurance claims', icon: ShieldPlus },
   { href: '/dashboard/reports', label: 'Reports', icon: BarChart3, show: CAN.viewReports },
+  { href: '/dashboard/insights', label: 'Business insights', icon: Sparkles, show: CAN.viewReports },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings, show: CAN.manageSettings },
 ];
 

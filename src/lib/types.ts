@@ -217,3 +217,27 @@ export interface AppSettings {
   kraPin: string;
   invoiceSeq: number;
 }
+
+/** A single, concrete, actionable finding from the business-insights engine.
+ *  Always computed deterministically from real data — never invented — so an
+ *  optional AI layer on top only prioritises/narrates, it doesn't fabricate. */
+export interface Recommendation {
+  id: string;
+  severity: 'critical' | 'warning' | 'info';
+  category: 'inventory' | 'sales' | 'finance' | 'customers' | 'suppliers' | 'insurance';
+  title: string;
+  detail: string;
+  action?: string;
+}
+
+export interface ScoreBreakdown {
+  label: string;
+  value: string;
+  impact: number; // points contributed/deducted, for transparency
+}
+
+export interface HealthScore {
+  score: number; // 0-100
+  label: 'Excellent' | 'Good' | 'Fair' | 'Poor';
+  breakdown: ScoreBreakdown[];
+}
