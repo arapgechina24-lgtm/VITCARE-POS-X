@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Download, FileText, Printer, FileSpreadsheet } from 'lucide-react';
 import { db } from '@/lib/db';
-import { downloadCSV, downloadXLS, printReport, KES, daysUntil } from '@/lib/utils';
+import { downloadCSV, downloadXLS, printReport, escapeHtml, KES, daysUntil } from '@/lib/utils';
 import { CAN, useRole } from '@/lib/role';
 import type { Sale } from '@/lib/types';
 
@@ -108,11 +108,11 @@ export default function ReportsPage() {
            </tbody></table>
            <h2>Top sellers</h2>
            <table><thead><tr><th>Product</th><th>Units</th><th>Revenue</th></tr></thead><tbody>
-             ${topDrugs.map((t) => `<tr><td>${t.name}</td><td>${t.qty}</td><td class="right">${KES(t.rev)}</td></tr>`).join('')}
+             ${topDrugs.map((t) => `<tr><td>${escapeHtml(t.name)}</td><td>${t.qty}</td><td class="right">${KES(t.rev)}</td></tr>`).join('')}
            </tbody></table>
            <h2>Expiry report (&le;120 days)</h2>
            <table><thead><tr><th>Product</th><th>Batch</th><th>Expiry</th><th>Stock</th></tr></thead><tbody>
-             ${expiryReport.map((d) => `<tr><td>${d.name}</td><td>${d.batchNumber}</td><td>${d.expiryDate}</td><td>${d.stock}</td></tr>`).join('')}
+             ${expiryReport.map((d) => `<tr><td>${escapeHtml(d.name)}</td><td>${escapeHtml(d.batchNumber)}</td><td>${escapeHtml(d.expiryDate)}</td><td>${d.stock}</td></tr>`).join('')}
            </tbody></table>`,
         )}>
           <Printer className="w-4 h-4" /> Print / PDF

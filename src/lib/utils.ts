@@ -79,8 +79,12 @@ export function downloadCSV(filename: string, rows: Array<Record<string, string 
 export const daysUntil = (iso: string) =>
   Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000);
 
-const escapeHtml = (v: string | number) =>
-  String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+/** Escapes a value for safe interpolation into raw HTML strings (exports/print
+ *  reports build HTML outside React's JSX, so nothing here is auto-escaped —
+ *  every dynamic value, especially staff-entered free text like drug names,
+ *  must go through this before being embedded). */
+export const escapeHtml = (v: string | number) =>
+  String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** Excel export without a charting/spreadsheet dependency: Excel opens an HTML
  *  table saved with an .xls extension as a workbook. Good enough for reporting
