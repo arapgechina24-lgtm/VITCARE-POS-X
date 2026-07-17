@@ -10,7 +10,8 @@ import type { Role } from '@/lib/types';
 
 /**
  * Authentication flow (Connected Mode — passwordless):
- *  1. Staff enter their work email; Supabase emails a 6-digit one-time code.
+ *  1. Staff enter their work email; Supabase emails a one-time code (length is
+ *     a project-level Auth setting, not assumed here — see the OTP input below).
  *     `shouldCreateUser: false` means only accounts an admin has already
  *     provisioned (see supabase/schema.sql) can sign in — no open self-signup.
  *  2. Entering the correct code signs them in.
@@ -107,7 +108,7 @@ export default function Login() {
               </p>
             ) : (
               <p className="text-xs text-center text-ink/50 pt-1">
-                No password needed — we&apos;ll email a 6-digit code. Only accounts an admin has already added can sign in.
+                No password needed — we&apos;ll email you a one-time code. Only accounts an admin has already added can sign in.
               </p>
             )}
           </form>
@@ -116,12 +117,15 @@ export default function Login() {
         {stage === 'otp' && (
           <form onSubmit={verifyOtp} className="mt-6 space-y-3">
             <div className="flex items-center gap-2 text-sm text-fir">
-              <Mail className="w-4 h-4" /> Enter the 6-digit code we emailed to {email}.
+              <Mail className="w-4 h-4" /> Enter the code we emailed to {email}.
             </div>
-            <input className="input text-center tracking-[0.4em] font-mono text-lg" inputMode="numeric"
-              maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))} autoFocus />
+            {/* Supabase's OTP length is configurable (Authentication → Emails) and
+                isn't guaranteed to be 6 — accept whatever length is actually sent
+                rather than hardcoding one, and let verifyOtp be the real validator. */}
+            <input className="input text-center tracking-[0.3em] font-mono text-lg" inputMode="numeric"
+              maxLength={10} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))} autoFocus />
             {err && <p className="text-sm text-red-600">{err}</p>}
-            <button className="btn-primary w-full" disabled={busy || otp.length !== 6}>
+            <button className="btn-primary w-full" disabled={busy || otp.length < 6}>
               <KeyRound className="w-4 h-4" /> {busy ? 'Verifying…' : 'Verify & sign in'}
             </button>
             <button type="button" className="text-xs text-ink/50 hover:text-fir w-full text-center"
