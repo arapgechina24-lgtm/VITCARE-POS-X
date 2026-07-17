@@ -37,41 +37,79 @@ export default function Login() {
     if (isDemoMode || !supabase) {
       sessionStorage.setItem('vitcare-demo-user', email || 'demo@vitcare.co.ke');
       setDemoRole(role);
-      await logAudit(email || 'demo', 'login', `Demo-mode sign-in as ${role}`);
+      try {
+        await logAudit(email || 'demo', 'login', `Demo-mode sign-in as ${role}`);
+      } catch (auditErr) {
+        console.warn('[login] audit log write failed (non-blocking)', auditErr);
+      }
       r.push('/dashboard');
       return;
     }
     setBusy(true);
-    const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
-    setBusy(false);
-    if (error) { setErr(error.message); return; }
-    setStage('otp');
+    try {
+      const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
+      if (error) { setErr(error.message); return; }
+      setStage('otp');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Something went wrong sending the code — try again.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function verifyOtp(e: React.FormEvent) {
     e.preventDefault();
     if (!supabase) return;
     setBusy(true); setErr('');
-    const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: 'email' });
-    if (error) { setErr('Invalid or expired code — try again.'); setBusy(false); return; }
+    try {
+      // The real auth check — if this fails, that's the only thing worth blocking on.
+      const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: 'email' });
+      if (error) { setErr('Invalid or expired code — try again.'); return; }
 
-    const { data: factors } = await supabase.auth.mfa.listFactors();
-    const totp = factors?.totp?.[0];
-    if (totp) { setFactorId(totp.id); setStage('mfa'); setBusy(false); return; }
-    await logAudit(email, 'login', 'Signed in via email OTP');
-    r.push('/dashboard');
+      // Everything below is best-effort: the user is already authenticated at
+      // this point, so a hiccup in the MFA-factor check or the local audit
+      // write (e.g. stale IndexedDB from earlier Demo Mode use) must never
+      // strand a successfully-logged-in user on this screen.
+      try {
+        const { data: factors } = await supabase.auth.mfa.listFactors();
+        const totp = factors?.totp?.[0];
+        if (totp) { setFactorId(totp.id); setStage('mfa'); return; }
+      } catch (mfaErr) {
+        console.warn('[login] MFA factor check failed, continuing without it', mfaErr);
+      }
+      try {
+        await logAudit(email, 'login', 'Signed in via email OTP');
+      } catch (auditErr) {
+        console.warn('[login] audit log write failed (non-blocking)', auditErr);
+      }
+      r.push('/dashboard');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Something went wrong verifying the code — try again.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function verifyMfa(e: React.FormEvent) {
     e.preventDefault();
     if (!supabase) return;
     setBusy(true); setErr('');
-    const { data: ch, error: chErr } = await supabase.auth.mfa.challenge({ factorId });
-    if (chErr || !ch) { setErr(chErr?.message ?? 'Challenge failed'); setBusy(false); return; }
-    const { error } = await supabase.auth.mfa.verify({ factorId, challengeId: ch.id, code: totpCode });
-    if (error) { setErr('Invalid code — try again.'); setBusy(false); return; }
-    await logAudit(email, 'login', 'MFA verified (TOTP) after email OTP');
-    r.push('/dashboard');
+    try {
+      const { data: ch, error: chErr } = await supabase.auth.mfa.challenge({ factorId });
+      if (chErr || !ch) { setErr(chErr?.message ?? 'Challenge failed'); return; }
+      const { error } = await supabase.auth.mfa.verify({ factorId, challengeId: ch.id, code: totpCode });
+      if (error) { setErr('Invalid code — try again.'); return; }
+      try {
+        await logAudit(email, 'login', 'MFA verified (TOTP) after email OTP');
+      } catch (auditErr) {
+        console.warn('[login] audit log write failed (non-blocking)', auditErr);
+      }
+      r.push('/dashboard');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Something went wrong — try again.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
