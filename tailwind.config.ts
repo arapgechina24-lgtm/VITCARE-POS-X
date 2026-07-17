@@ -1,7 +1,11 @@
 import type { Config } from 'tailwindcss';
 
 export default {
-  content: ['./src/**/*.{ts,tsx}'],
+  // .tsx only — plain .ts files never contain className/JSX, and scanning them
+  // risks Tailwind's JIT candidate-extractor misreading unrelated code (e.g. a
+  // regex character class) as an arbitrary-value utility. Turbopack's stricter
+  // CSS parser hard-fails on the resulting malformed rule where webpack didn't.
+  content: ['./src/**/*.tsx'],
   darkMode: 'class',
   theme: {
     extend: {
