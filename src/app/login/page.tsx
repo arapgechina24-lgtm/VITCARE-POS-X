@@ -64,7 +64,7 @@ export default function Login() {
     try {
       // The real auth check — if this fails, that's the only thing worth blocking on.
       const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: 'email' });
-      if (error) { setErr('Invalid or expired code — try again.'); return; }
+      if (error) { setErr('Invalid or expired code — try again.'); setBusy(false); return; }
 
       // Everything below is best-effort: the user is already authenticated at
       // this point, so a hiccup in the MFA-factor check or the local audit
@@ -73,7 +73,7 @@ export default function Login() {
       try {
         const { data: factors } = await supabase.auth.mfa.listFactors();
         const totp = factors?.totp?.[0];
-        if (totp) { setFactorId(totp.id); setStage('mfa'); return; }
+        if (totp) { setFactorId(totp.id); setStage('mfa'); setBusy(false); return; }
       } catch (mfaErr) {
         console.warn('[login] MFA factor check failed, continuing without it', mfaErr);
       }
@@ -82,10 +82,14 @@ export default function Login() {
       } catch (auditErr) {
         console.warn('[login] audit log write failed (non-blocking)', auditErr);
       }
+      // Success — deliberately leave busy=true (button stays disabled/shows
+      // "Verifying…") while the route transition to /dashboard is in flight.
+      // Resetting it here would briefly re-enable the form on the still-visible
+      // login page, inviting an impatient extra click that resubmits the
+      // now-consumed (single-use) OTP code and surfaces a confusing error.
       r.push('/dashboard');
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Something went wrong verifying the code — try again.');
-    } finally {
       setBusy(false);
     }
   }
@@ -96,18 +100,18 @@ export default function Login() {
     setBusy(true); setErr('');
     try {
       const { data: ch, error: chErr } = await supabase.auth.mfa.challenge({ factorId });
-      if (chErr || !ch) { setErr(chErr?.message ?? 'Challenge failed'); return; }
+      if (chErr || !ch) { setErr(chErr?.message ?? 'Challenge failed'); setBusy(false); return; }
       const { error } = await supabase.auth.mfa.verify({ factorId, challengeId: ch.id, code: totpCode });
-      if (error) { setErr('Invalid code — try again.'); return; }
+      if (error) { setErr('Invalid code — try again.'); setBusy(false); return; }
       try {
         await logAudit(email, 'login', 'MFA verified (TOTP) after email OTP');
       } catch (auditErr) {
         console.warn('[login] audit log write failed (non-blocking)', auditErr);
       }
+      // Success — leave busy=true through the redirect; see verifyOtp for why.
       r.push('/dashboard');
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Something went wrong — try again.');
-    } finally {
       setBusy(false);
     }
   }
